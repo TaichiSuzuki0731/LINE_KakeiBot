@@ -1,5 +1,7 @@
 <?php
-    include('line_info.php');
+    include('line_api_info.php'); //LINE_API情報
+    include('line_info.php'); //LINE_APIに接続する際に必要な情報
+    include('function.inc.php'); //共通関数群
 
     // 送信するメッセージ
     $message_1 = "こんにちは API";

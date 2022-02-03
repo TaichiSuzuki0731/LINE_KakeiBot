@@ -1,4 +1,5 @@
 <?php
+    include('line_api_info.php'); //LINE_API情報
     include('line_info.php'); //LINE_APIに接続する際に必要な情報
     include('function.inc.php'); //共通関数群
 
@@ -53,9 +54,30 @@
     //db接続
     $db_link = db_connect();
 
+    //ユーザ情報取得
+    $sql = sprintf("SELECT linename FROM line_adminuser WHERE id = '%s'",
+        mysqli_real_escape_string($db_link, $user_id)
+    );
+    $res = mysqli_query($db_link, $sql);
+    $row = mysqli_fetch_assoc($res);
+    if (count($row['linename']) == 0) {
+        $line_name = '名無さん!名前が登録されていません!「#KakeiBot」のように「#(半角)」あとに名前をつけて教えてください!';
+    } else {
+        $line_name = $row['linename'] . 'さん!';
+    }
+
     //支出合計を計算
     $sum_price = 0;
-    $sql = 'SELECT price FROM kakeibo';
+    //グループ会計
+    if ($ch_type == 'group') {
+        $sql = sprintf("SELECT price FROM kakeibo WHERE groupId = '%s'",
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+    } else { //個人会計
+        $sql = sprintf("SELECT price FROM kakeibo WHERE id = '%s' and ch_type = 'user'",
+            mysqli_real_escape_string($db_link, $user_id)
+        );
+    }
     // クエリの実行
     $res = mysqli_query($db_link, $sql);
     if ($res != false) {
@@ -86,7 +108,7 @@
                 $insert_flag = false;
             }
             if ($insert_flag) {
-                $message_text = h(str_replace('@', '', $message_text));
+                $message_text = (str_replace('@', '', $message_text));
                 $sql = sprintf("INSERT INTO kakeibo (id, groupId, message_id, price, ch_type, time_stamp) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
                     mysqli_real_escape_string($db_link, $user_id),
                     mysqli_real_escape_string($db_link, $group_id),
@@ -103,15 +125,28 @@
                 } else {
                     $return_message_text = 'DB_Error_2';
                 }
-    
             } else {
                 $return_message_text = '「-」の位置は@の次です。また、-は2回以上は使えません';
             }
         } else {
             $return_message_text = '支出入力時に使える文字は「@,-」と半角数字です';
         }
+    } elseif (strpos($message_text,'#') !== false) {
+        $message_text = (str_replace('#', '', $message_text));
+        $sql = sprintf("INSERT INTO line_adminuser (id, linename) VALUES ('%s', '%s')",
+            mysqli_real_escape_string($db_link, $user_id),
+            mysqli_real_escape_string($db_link, $message_text)
+        );
+        // クエリの実行
+        $res = mysqli_query($db_link, $sql);
+        if (!$res) {
+            $return_message_text = '既に登録されている識別IDです';
+            $line_name = '';
+        } else {
+            $line_name = '登録完了しました';
+        }
     } elseif ($message_text == 'おーい') {
-        $return_message_text = '支出がいくらか知りたい場合は「いくら？」と聞いてください。新たな支出の登録は「@1000」のように半角英数字の前に@をつくて送ってくださると嬉しいです。修正したい場合は「@-1000」のように@の後ろに-をつけてください';
+        $return_message_text = '支出がいくらか知りたい場合は「いくら？」と聞いてください。新たな支出の登録は「@1000」のように半角英数字の前に「@(半角)」をつけて送ってくださると嬉しいです。修正したい場合は「@-1000」のように@の後ろに-をつけてください';
     } else {
         exit();
     }
@@ -120,4 +155,4 @@
     mysqli_close($db_link);
 
     //返信実行
-    sending_messages(LINE_CHANNEL_ACCESS_TOKEN, $replyToken, $message_type, $return_message_text);
+    sending_messages(LINE_CHANNEL_ACCESS_TOKEN, $replyToken, $message_type, $line_name . $return_message_text);
