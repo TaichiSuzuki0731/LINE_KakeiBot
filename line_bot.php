@@ -31,25 +31,50 @@
         curl_close($ch);
     }
 
+    //著名確認用の関数
+    function check_signagure($str) {
+        // ハッシュ作成
+        $hash = hash_hmac('sha256', $str, LINE_CHANNEL_SECRET , true);
+
+        // Signature作成
+        $sig = base64_encode($hash);
+
+        return $sig;
+    }
+
     //処理開始
     //ユーザーからのメッセージ取得
     $json_string = file_get_contents('php://input');
+
+    // HTTPヘッダーを取得
+    $headers = getallheaders();
+    // HTTPヘッダーから、署名検証用データを取得
+    $headerSignature = $headers["X-Line-Signature"];
+    //著名の確認
+    $sig = check_signagure($json_string);
+    // 確認
+    if ($sig != $headerSignature) {
+        exit();
+    }
+
+    //jsonデコード
     $json_object = json_decode($json_string);
 
-    //file_put_contents('sam.json', $json_string, FILE_APPEND); //debug
-
-    //取得データ
+    //取得データを変数に格納
     $replyToken   = h($json_object->{"events"}[0]->{"replyToken"});             //返信用トークン
-    $message_type = h($json_object->{"events"}[0]->{"message"}->{"type"});    //メッセージタイプ
-    $message_id   = h($json_object->{"events"}[0]->{"message"}->{"id"});        //メッセージID
-    $message_text = h($json_object->{"events"}[0]->{"message"}->{"text"});    //メッセージ内容
-    $timestamp    = h($json_object->{"events"}[0]->{"timestamp"});               //タイムスタンプ
-    $ch_type      = h($json_object->{"events"}[0]->{"source"}->{"type"});          //チャンネルのタイプ
-    $user_id      = h($json_object->{"events"}[0]->{"source"}->{"userId"});        //user_id
-    $group_id     = h($json_object->{"events"}[0]->{"source"}->{"groupId"});      //group_id
+    $message_type = h($json_object->{"events"}[0]->{"message"}->{"type"});      //メッセージタイプ
+    $message_text = h($json_object->{"events"}[0]->{"message"}->{"text"});      //メッセージ内容
+    $ch_type      = h($json_object->{"events"}[0]->{"source"}->{"type"});       //チャンネルのタイプ
+    $user_id      = h($json_object->{"events"}[0]->{"source"}->{"userId"});     //user_id
+    $group_id     = h($json_object->{"events"}[0]->{"source"}->{"groupId"});    //group_id
 
     //メッセージタイプが「text」以外のときは何も返さず終了
-    if($message_type != "text") exit;
+    if ($message_type != "text") {
+        exit();
+    }
+
+    //全角英数字->半角英数字
+    $message_text = mb_convert_kana($message_text, 'n');
 
     //db接続
     $db_link = db_connect();
@@ -61,7 +86,7 @@
     $res = mysqli_query($db_link, $sql);
     $row = mysqli_fetch_assoc($res);
     if (count($row['linename']) == 0) {
-        $line_name = '名無さん!名前が登録されていません!「#KakeiBot」のように「#(半角)」あとに名前をつけて教えてください!';
+        $line_name = '名無さん!名前が登録されていません!「#Kakeibo」や「#かけいぼ」ように「#」のあとに名前をつけて教えてください!';
     } else {
         $line_name = $row['linename'] . 'さん!';
     }
@@ -109,13 +134,11 @@
             }
             if ($insert_flag) {
                 $message_text = (str_replace('@', '', $message_text));
-                $sql = sprintf("INSERT INTO kakeibo (id, groupId, message_id, price, ch_type, time_stamp) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
+                $sql = sprintf("INSERT INTO kakeibo (id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s')",
                     mysqli_real_escape_string($db_link, $user_id),
                     mysqli_real_escape_string($db_link, $group_id),
-                    mysqli_real_escape_string($db_link, $message_id),
                     mysqli_real_escape_string($db_link, $message_text),
                     mysqli_real_escape_string($db_link, $ch_type),
-                    mysqli_real_escape_string($db_link, $timestamp)
                 );
                 // クエリの実行
                 $res = mysqli_query($db_link, $sql);
@@ -126,10 +149,10 @@
                     $return_message_text = 'DB_Error_2';
                 }
             } else {
-                $return_message_text = '「-」の位置は@の次です。また、-は2回以上は使えません';
+                $return_message_text = '「-(ハイフン)」の位置は@の次です。また、-は2回以上は使えません';
             }
         } else {
-            $return_message_text = '支出入力時に使える文字は「@,-」と半角数字です';
+            $return_message_text = '支出入力時に使える文字は「@,-(ハイフン)」と数字です';
         }
     } elseif (strpos($message_text,'#') !== false) {
         $message_text = (str_replace('#', '', $message_text));
@@ -143,10 +166,10 @@
             $return_message_text = '既に登録されている識別IDです';
             $line_name = '';
         } else {
-            $line_name = '登録完了しました';
+            $line_name = $message_text . 'さん!登録完了しました';
         }
     } elseif ($message_text == 'おーい') {
-        $return_message_text = '支出がいくらか知りたい場合は「いくら？」と聞いてください。新たな支出の登録は「@1000」のように半角英数字の前に「@(半角)」をつけて送ってくださると嬉しいです。修正したい場合は「@-1000」のように@の後ろに-をつけてください';
+        $return_message_text = '支出がいくらか知りたい場合は「いくら？」と聞いてください。新たな支出の登録は「@1000」のように数字の前に「@」をつけて送ってくださると嬉しいです。修正したい場合は「@-1000」のように@の後ろに-をつけてください';
     } else {
         exit();
     }
