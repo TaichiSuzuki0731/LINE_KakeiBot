@@ -1,6 +1,6 @@
 <?php
-    include('line_info.php');
-    include('function.inc.php');
+    include('line_info.php'); //LINE_APIに接続する際に必要な情報
+    include('function.inc.php'); //共通関数群
 
     //メッセージの送信
     function sending_messages($accessToken, $replyToken, $message_type, $return_message_text){
@@ -73,7 +73,7 @@
         } else {
             $return_message_text = 'DB_Error_1';
         } 
-    } else if (strpos($message_text,'@') !== false) {
+    } elseif (strpos($message_text,'@') !== false) {
         //@,-,1~9のみをTRUE
         if (preg_match("/^[-@0-9]+$/", $message_text)) {
             //-の位置が[1]かfalseとなる場合のみTRUE
@@ -110,8 +110,10 @@
         } else {
             $return_message_text = '支出入力時に使える文字は「@,-」と半角数字です';
         }
-    } else {
+    } elseif ($message_text == 'おーい') {
         $return_message_text = '支出がいくらか知りたい場合は「いくら？」と聞いてください。新たな支出の登録は「@1000」のように半角英数字の前に@をつくて送ってくださると嬉しいです。修正したい場合は「@-1000」のように@の後ろに-をつけてください';
+    } else {
+        exit();
     }
 
     // DBとの接続解除
