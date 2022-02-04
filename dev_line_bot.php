@@ -25,7 +25,7 @@
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json; charser=UTF-8',
-            'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN
+            'Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN
         ));
         $result = curl_exec($ch);
         curl_close($ch);
@@ -34,7 +34,7 @@
     //著名確認用の関数
     function check_signagure($str) {
         // ハッシュ作成
-        $hash = hash_hmac('sha256', $str, LINE_CHANNEL_SECRET, true);
+        $hash = hash_hmac('sha256', $str, DEV_LINE_CHANNEL_SECRET, true);
 
         // Signature作成
         $sig = base64_encode($hash);
@@ -86,7 +86,7 @@
     $db_link = db_connect();
 
     //ユーザ情報取得
-    $sql = sprintf("SELECT linename FROM line_adminuser WHERE id = '%s'",
+    $sql = sprintf("SELECT linename FROM dev_line_adminuser WHERE id = '%s'",
         mysqli_real_escape_string($db_link, $user_id)
     );
     $res = mysqli_query($db_link, $sql);
@@ -101,11 +101,11 @@
     $sum_price = 0;
     //グループ会計
     if ($ch_type == 'group') {
-        $sql = sprintf("SELECT price FROM kakeibo WHERE groupId = '%s'",
+        $sql = sprintf("SELECT price FROM dev_kakeibo WHERE groupId = '%s'",
             mysqli_real_escape_string($db_link, $group_id)
         );
     } else { //個人会計
-        $sql = sprintf("SELECT price FROM kakeibo WHERE id = '%s' and ch_type = 'user'",
+        $sql = sprintf("SELECT price FROM dev_kakeibo WHERE id = '%s' and ch_type = 'user'",
             mysqli_real_escape_string($db_link, $user_id)
         );
     }
@@ -137,7 +137,7 @@
             $insert_flag = false;
         }
         if ($insert_flag) {
-            $sql = sprintf("INSERT INTO kakeibo (id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s')",
+            $sql = sprintf("INSERT INTO dev_kakeibo (id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s')",
                 mysqli_real_escape_string($db_link, $user_id),
                 mysqli_real_escape_string($db_link, $group_id),
                 mysqli_real_escape_string($db_link, $message_text),
@@ -156,7 +156,7 @@
         }
     } elseif (strpos($message_text,'@') !== false) {
         $message_text = (str_replace('@', '', $message_text));
-        $sql = sprintf("INSERT INTO line_adminuser (id, linename) VALUES ('%s', '%s')",
+        $sql = sprintf("INSERT INTO dev_line_adminuser (id, linename) VALUES ('%s', '%s')",
             mysqli_real_escape_string($db_link, $user_id),
             mysqli_real_escape_string($db_link, $message_text)
         );
