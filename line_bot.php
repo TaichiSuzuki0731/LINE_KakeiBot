@@ -18,7 +18,8 @@
         ];
 
         //curl実行
-        $ch = curl_init("https://api.line.me/v2/bot/message/reply");
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, LINE_REPLY_URL);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -42,7 +43,48 @@
         return $sig;
     }
 
+    //ユーザ情報を取得
+    function get_line_group_user_profile($ch_type, $group_id, $user_id) {
+        if ($ch_type == 'group') {
+            $url = 'https://api.line.me/v2/bot/group/' . $group_id .'/member/' . $user_id;
+        } elseif ($ch_type == 'room') {
+            $url = 'https://api.line.me/v2/bot/room/' . $group_id . '/member/' . $user_id;
+        } else { //プライベート
+            $url = 'https://api.line.me/v2/bot/profile/' . $user_id;
+        }
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $userdata = json_decode($response);
+
+        return $userdata;
+    }
+
+    //名前登録
+    function insert_name($db_link, $user_id, $message_text) {
+        $sql = sprintf("INSERT INTO line_adminuser (id, linename) VALUES ('%s', '%s')",
+            mysqli_real_escape_string($db_link, $user_id),
+            mysqli_real_escape_string($db_link, $message_text)
+        );
+
+        // クエリの実行
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
     //処理開始
+
+    //Lineサーバに200を返す
+    http_response_code(200);
+
     //ユーザーからのメッセージ取得
     $json_string = file_get_contents('php://input');
 
@@ -92,7 +134,19 @@
     $res = mysqli_query($db_link, $sql);
     $row = mysqli_fetch_assoc($res);
     if (count($row['linename']) == 0) {
-        $line_name = '名無さん!名前が登録されていません!「@Kakeibo」や「@かけいぼ」のように「@」のあとに名前をつけて教えてください!';
+        $get_user_info = get_line_group_user_profile($ch_type, $group_id, $user_id);
+        $get_name = $get_user_info -> {"displayName"};
+        if (count($get_name) > 0) {
+            $res = insert_name($db_link, $user_id, $get_name);
+            if (!$res) {
+                $return_message_text = '既に登録されている識別IDです';
+                $line_name = '';
+            } else {
+                $line_name = $get_name . 'さん!';
+            }
+        } else {
+            $line_name = "名前が取得できませんでした。\n「@Kakeibo」や「@かけいぼ」のように「@」のあとに名前をつけて送ってください!\n";
+        }
     } else {
         $line_name = $row['linename'] . 'さん!';
     }
@@ -147,21 +201,16 @@
             $res = mysqli_query($db_link, $sql);
             if ($res) {
                 $sum_price = $sum_price + $message_text;
-                $return_message_text = 'DBに格納しました。今月の支出合計は' . $sum_price . '円となります';
+                $return_message_text = "DBに格納しました。\n今月の支出合計は" . $sum_price . "円となります";
             } else {
                 $return_message_text = 'DB_Error_2';
             }
         } else {
-            $return_message_text = '「-(半角ハイフン)」の位置は先頭のみです。また、-は2回以上は使えません';
+            $return_message_text = "「-(ハイフン)」の位置は先頭のみです。\nまた、-は2回以上は使えません'¥";
         }
     } elseif (strpos($message_text,'@') !== false) {
         $message_text = (str_replace('@', '', $message_text));
-        $sql = sprintf("INSERT INTO line_adminuser (id, linename) VALUES ('%s', '%s')",
-            mysqli_real_escape_string($db_link, $user_id),
-            mysqli_real_escape_string($db_link, $message_text)
-        );
-        // クエリの実行
-        $res = mysqli_query($db_link, $sql);
+        $res = insert_name($db_link, $user_id, $message_text);
         if (!$res) {
             $return_message_text = '既に登録されている識別IDです';
             $line_name = '';
@@ -169,7 +218,7 @@
             $line_name = $message_text . 'さん!登録完了しました';
         }
     } elseif ($message_text == 'お-い') {
-        $return_message_text = '支出がいくらか知りたい場合は「いくら」と聞いてください。新たな支出の登録は「1000」と入力して送ってくださると嬉しいです。修正したい場合は「-1000」のように数字の前に半角ハイフンを入力して送ってください';
+        $return_message_text = "支出がいくらか知りたい場合は「いくら」と聞いてください。\n\n新たな支出の登録は「1000」と入力して送ってくださると嬉しいです。\n\n修正したい場合は「-1000」のように数字の前に「-(ハイフン)」を入力して送ってください";
     } else {
         exit();
     }
@@ -177,5 +226,8 @@
     // DBとの接続解除
     mysqli_close($db_link);
 
+    $line_name = $line_name != '' ? $line_name . "\n" : "";
+    $text = $line_name . $return_message_text;
+
     //返信実行
-    sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+    sending_messages($replyToken, $message_type, $text);
