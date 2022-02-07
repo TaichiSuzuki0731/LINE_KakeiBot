@@ -150,6 +150,21 @@
         mysqli_close($db_link);
     }
 
+    //kakeiboテーブルから毎日ごとの集計を取得
+    function get_date_price($db_link, $ch_type, $user_id, $group_id) {
+        if ($ch_type == 'user') {
+            $user_id = mysqli_real_escape_string($db_link, $user_id);
+            $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where id = '" . $user_id . "' GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
+        } else {
+            $group_id = mysqli_real_escape_string($db_link, $group_id);
+            $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where  groupId = '" . $group_id . "' GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
+        }
+
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
     //処理開始
 
     //Lineサーバに200を返す
@@ -276,13 +291,27 @@
     //返信メッセージ
     if ($message_text == 'いくら') {
         if ($res != false) {
-            $return_message_text = '今月の支出は' . $sum_price . '円です';
+            $return_message_text = '今月の支出は' . $sum_price . '円ニャ';
             if ($cnt_member > 0) {
-                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円です';
+                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
             }
         } else {
             $return_message_text = 'DB_Error_1';
-        } 
+        }
+    } elseif ($message_text == 'くわしく') {
+        //毎日ごとの金額を集計
+        $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
+        if ($res != false) {
+            while ($row = mysqli_fetch_assoc($res)) {
+                $return_message_text .= $row['date'];
+                $return_message_text .= '=>¥';
+                $return_message_text .= $row['sam_price'];
+                $return_message_text .= "\n";
+            }
+            $return_message_text = substr($return_message_text, 0, -1);
+        } else {
+            $return_message_text = 'エラーにゃ';
+        }
     } elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
             //-の位置が[0]かfalseとなる場合のみTRUE
@@ -305,25 +334,31 @@
                 $res = mysqli_query($db_link, $sql);
                 if ($res) {
                     $sum_price = $sum_price + $message_text;
-                    $return_message_text = "DBに格納しました\n今月の支出合計は" . $sum_price . "円となります";
+                    $return_message_text = "DBに格納しました\n今月の支出合計は" . $sum_price . "円となりますニャ";
                     if ($cnt_member > 0) {
-                        $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円です';
+                        $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
                     }
                 } else {
                     $return_message_text = 'DB_Error_2';
                 }
             } else {
-                $return_message_text = "「-(ハイフン)」の位置は先頭のみです\nまた、-は2回以上は使えません'¥";
+                $return_message_text = "「-(ハイフン)」の位置は先頭のみニャ\nまた、-は2回以上は使えませんにゃ〜〜'¥";
             }
         } else { //未フォロー記録不可
-            $return_message_text = "友達登録がされていません\nKakeiBotとととととと友達になってください、、、。";
+            $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
         }
     } elseif ($message_text == 'お-い') {
-        $return_message_text = "支出がいくらか知りたい場合は「いくら」と聞いてください";
-        $return_message_text .= "\n\n新たな支出の登録は「1000」と入力して送ってくださると嬉しいです";
-        $return_message_text .= "\n\n修正したい場合は「-1000」のように数字の前に「-(ハイフン)」を入力して送ってください";
-        $return_message_text .= "\n支出の記録は友達登録していただいている方のみが可能です";
-        $return_message_text .= "\n\nグループやトークルームで使った場合は、そのチャンネル内での合計支出を出せます";
+        $return_message_text = <<<EOT
+・支出がいくらか知りたい場合は「いくら」と聞いてくださいニャ
+
+・新たな支出の登録は「1000」と入力して送ってくださると嬉しいニャ
+
+・修正したい場合は「-1000」のように数字の前に「-(ハイフン)」を入力して送ってくださいニャ。*支出の記録は友達登録していただいている方のみが可能ニャ
+
+・グループやトークルームで使った場合は、そのチャンネル内での合計支出を出せますニャ。またグループ内のメンバー数で割った一人当たりの支出も出力されますニャ
+
+・「くわしく」と送ると毎日毎の支出が確認できますニャ
+EOT;
     } else {
         exit();
     }
