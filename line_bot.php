@@ -86,6 +86,70 @@
         mysqli_close($db_link);
     }
 
+    //メンバーをカウント
+    function count_group_member($ch_type, $group_id) {
+        $userdata = '';
+
+        if ($ch_type == 'group') {
+            $url = 'https://api.line.me/v2/bot/group/' . $group_id . '/members/count';
+        } elseif ($ch_type == 'room') {
+            $url = 'https://api.line.me/v2/bot/room/' . $group_id . '/members/count';
+        } else {
+            return $userdata;
+        }
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $userdata = json_decode($response);
+
+        return $userdata;
+    }
+
+    //botがグループに参加した時にインサート
+    function insert_group_member($db_link, $group_id, $cnt) {
+        $sql = sprintf("INSERT INTO group_count_member (groupId, count, modifiy) VALUES ('%s', '%s', now())",
+            mysqli_real_escape_string($db_link, $group_id),
+            mysqli_real_escape_string($db_link, $cnt)
+        );
+
+        //登録実行
+        mysqli_query($db_link, $sql);
+
+        mysqli_close($db_link);
+    }
+
+    //メンバー数に変更があった際に更新
+    function update_group_member($db_link, $group_id, $cnt) {
+        $sql = sprintf("UPDATE group_count_member SET count = '%s', modifiy = now() WHERE groupId = '%s'",
+            mysqli_real_escape_string($db_link, $cnt),
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+
+        //登録実行
+        mysqli_query($db_link, $sql);
+
+        mysqli_close($db_link);
+    }
+
+    //botが退出した時にデリート
+    function delete_group_member($db_link, $group_id) {
+        $sql = sprintf("DELETE FROM group_count_member WHERE groupId = '%s'",
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+
+        //登録実行
+        mysqli_query($db_link, $sql);
+
+        mysqli_close($db_link);
+    }
+
     //処理開始
 
     //Lineサーバに200を返す
@@ -131,6 +195,21 @@
         del_user_info($db_link, $user_id);
     }
 
+    //グループ or トークルームに参加した際はjoin,メンバーが参加した際はmemberJoined 検知した時にメンバー数をカウントする
+    if ($event_type == 'join' || $event_type == 'memberJoined' || $event_type == 'leave' || $event_type == 'memberLeft') {
+        $get_number_people = count_group_member($ch_type, $group_id);
+        if ($get_number_people != '') {
+            $cnt = $get_number_people->{"count"};
+            if ($event_type == 'join') { //グループにbotが参加
+                insert_group_member($db_link, $group_id, $cnt);
+            } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
+                update_group_member($db_link, $group_id, $cnt);
+            } else { //グループからbot退出
+                delete_group_member($db_link, $group_id);
+            }
+        }
+    }
+
     //メッセージタイプが「text」以外のときは何も返さず終了
     if ($message_type != "text") {
         // DBとの接続解除
@@ -157,6 +236,18 @@
     } else { //フォローされている
         $follow_flag = true;
         $line_name = $row['linename'];
+    }
+
+    //グループ or トークルームの場合は人数を取得
+    $cnt_member = 0;
+    if ($ch_type == 'group' || $ch_type == 'room') {
+        $sql = sprintf("SELECT count FROM group_count_member WHERE groupId = '%s'",
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+
+        $res = mysqli_query($db_link, $sql);
+        $row = mysqli_fetch_assoc($res);
+        $cnt_member = $row['count'];
     }
 
     //支出合計を計算
@@ -186,6 +277,9 @@
     if ($message_text == 'いくら') {
         if ($res != false) {
             $return_message_text = '今月の支出は' . $sum_price . '円です';
+            if ($cnt_member > 0) {
+                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円です';
+            }
         } else {
             $return_message_text = 'DB_Error_1';
         } 
@@ -212,6 +306,9 @@
                 if ($res) {
                     $sum_price = $sum_price + $message_text;
                     $return_message_text = "DBに格納しました\n今月の支出合計は" . $sum_price . "円となります";
+                    if ($cnt_member > 0) {
+                        $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円です';
+                    }
                 } else {
                     $return_message_text = 'DB_Error_2';
                 }
