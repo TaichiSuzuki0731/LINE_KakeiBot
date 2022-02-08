@@ -154,7 +154,7 @@
     function get_date_price($db_link, $ch_type, $user_id, $group_id) {
         if ($ch_type == 'user') {
             $user_id = mysqli_real_escape_string($db_link, $user_id);
-            $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where id = '" . $user_id . "' GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
+            $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where id = '" . $user_id . "' and groupId = '' GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
         } else {
             $group_id = mysqli_real_escape_string($db_link, $group_id);
             $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where  groupId = '" . $group_id . "' GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
@@ -168,7 +168,13 @@
     //処理開始
 
     //Lineサーバに200を返す
-    http_response_code(200);
+    $response_code = http_response_code(200);
+
+    //accesslogを記録
+    $protocol = empty($_SERVER["HTTPS"]) ? "http://" : "https://";
+    $thisurl = $protocol . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+    $access_log = '[dev]AccessLog => ' . $_SERVER["REMOTE_ADDR"] . ' | Method => ' . $_SERVER['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
+    file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
 
     //ユーザーからのメッセージ取得
     $json_string = file_get_contents('php://input');

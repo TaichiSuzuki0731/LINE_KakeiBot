@@ -168,7 +168,13 @@
     //処理開始
 
     //Lineサーバに200を返す
-    http_response_code(200);
+    $response_code = http_response_code(200);
+
+    //accesslogを記録
+    $protocol = empty($_SERVER["HTTPS"]) ? "http://" : "https://";
+    $thisurl = $protocol . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+    $access_log = '[pro]AccessLog => ' . $_SERVER["REMOTE_ADDR"] . ' | Method => ' . $_SERVER['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
+    file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
 
     //ユーザーからのメッセージ取得
     $json_string = file_get_contents('php://input');
