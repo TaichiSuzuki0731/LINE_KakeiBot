@@ -3,6 +3,25 @@
     include('line_info.php'); //LINE_APIに接続する際に必要な情報
     include('function.inc.php'); //共通関数群
 
+    //curlレスポンスを収集
+    function receipt_curl_response($result, $res_curl, $method) {
+        $strHead = substr($result, 0, $res_curl['header_size']);
+        $_header = str_replace("\r", '', $strHead);
+        $tmp_header = explode("\n", $_header);
+        $ary_header = [];
+        foreach ($tmp_header as $row_data) {
+            $tmp = explode(': ', $row_data);
+            $key = trim($tmp[0]);
+            if ( $key == '' ) {
+                continue;
+            }
+            $val = str_replace($key.': ', '', $row_data);
+            $ary_header[$key] = trim($val);
+        }
+        $log = '[pro]x-line-request-id => ' . $ary_header['x-line-request-id'] . ' | Method => ' . $method . ' | EndPoint => ' . $res_curl['url'] . ' | StatusCode => ' . $res_curl['http_code'] . ' | date => ' . $ary_header['date'];
+        file_put_contents('access.log', $log . "\n", FILE_APPEND);
+    }
+
     //メッセージの送信
     function sending_messages($replyToken, $message_type, $return_message_text){
         //レスポンスフォーマット
@@ -23,13 +42,18 @@
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json; charser=UTF-8',
             'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN
         ));
         $result = curl_exec($ch);
+        $res_curl = curl_getinfo($ch);
         curl_close($ch);
+
+        //MessageAPIのレスポンスを記録
+        receipt_curl_response($result, $res_curl, 'POST');
     }
 
     //著名確認用の関数
@@ -51,10 +75,15 @@
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
 
         $response = curl_exec($ch);
+        $res_curl = curl_getinfo($ch);
         curl_close($ch);
+
+        //MessageAPIのレスポンスを記録
+        receipt_curl_response($response, $res_curl, 'GET');
 
         $userdata = json_decode($response);
 
@@ -102,10 +131,15 @@
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
 
         $response = curl_exec($ch);
+        $res_curl = curl_getinfo($ch);
         curl_close($ch);
+
+        //MessageAPIのレスポンスを記録
+        receipt_curl_response($response, $res_curl, 'GET');
 
         $userdata = json_decode($response);
 
