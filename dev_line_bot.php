@@ -22,6 +22,14 @@
         file_put_contents('access.log', $log . "\n", FILE_APPEND);
     }
 
+    //Webhook受信時のログ
+    function receipt_webhook_request($response_code, $server_info) {
+        $protocol = empty($server_info["HTTPS"]) ? "http://" : "https://";
+        $thisurl = $protocol . $server_info["HTTP_HOST"] . $server_info["REQUEST_URI"];
+        $access_log = '[dev]AccessLog => ' . $server_info["REMOTE_ADDR"] . ' | Method => ' . $server_info['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
+        file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
+    }
+
     //メッセージの送信
     function sending_messages($replyToken, $message_type, $return_message_text){
         //レスポンスフォーマット
@@ -85,8 +93,10 @@
         //MessageAPIのレスポンスを記録
         receipt_curl_response($response, $res_curl, 'GET');
 
-        $userdata = json_decode($response);
+        //レスポンスからbodyを取り出す
+        $response = substr($response, $res_curl['header_size']);
 
+        $userdata = json_decode($response);
         return $userdata;
     }
 
@@ -140,6 +150,9 @@
 
         //MessageAPIのレスポンスを記録
         receipt_curl_response($response, $res_curl, 'GET');
+
+        //レスポンスからbodyを取り出す
+        $response = substr($response, $res_curl['header_size']);
 
         $userdata = json_decode($response);
 
@@ -247,16 +260,82 @@
         return $res;
     }
 
+    //kakeiboテーブルにデータをインサート
+    function insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type) {
+        $sql = sprintf("INSERT INTO dev_kakeibo (hash_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
+            make_hash_id(),
+            mysqli_real_escape_string($db_link, $user_id),
+            mysqli_real_escape_string($db_link, $group_id),
+            mysqli_real_escape_string($db_link, $message_text),
+            mysqli_real_escape_string($db_link, $ch_type)
+        );
+
+        // クエリの実行
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
+    //支出合計を計算
+    function sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id) {
+        $sum_price = 0;
+        $sql = 'SELECT price FROM dev_kakeibo WHERE ';
+        //グループ会計
+        if ($ch_type == 'group' || $ch_type == 'room') {
+            $sql .= sprintf("groupId = '%s'",
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        } else { //個人会計
+            $sql .= sprintf("id = '%s' and ch_type = 'user'",
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        }
+        $sql .= " and DATE_FORMAT(insert_time, '%Y%m') = DATE_FORMAT(NOW(), '%Y%m')";
+
+        // クエリの実行
+        $res = mysqli_query($db_link, $sql);
+        if ($res != false) {
+            while ($row = mysqli_fetch_assoc($res)) {
+                $sum_price = $sum_price + $row['price'];
+            }
+        }
+
+        return $sum_price;
+    }
+
+    //グループ or トークルームの場合は人数を取得
+    function count_groupa_member($db_link, $ch_type, $group_id) {
+        $cnt_member = 0;
+        $sql = sprintf("SELECT count FROM dev_group_count_member WHERE groupId = '%s'",
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+
+        $res = mysqli_query($db_link, $sql);
+        $row = mysqli_fetch_assoc($res);
+        $cnt_member = $row['count'];
+
+        return $cnt_member;
+    }
+
+    //ユーザネーム取得
+    function get_user_name($db_link, $user_id) {
+        $sql = sprintf("SELECT linename FROM dev_line_adminuser WHERE id = '%s'",
+            mysqli_real_escape_string($db_link, $user_id)
+        );
+        $res = mysqli_query($db_link, $sql);
+        $row = mysqli_fetch_assoc($res);
+
+        return $row['linename'];
+    }
+
     //処理開始
 
     //Lineサーバに200を返す
     $response_code = http_response_code(200);
 
     //Webhook受信時のログ
-    $protocol = empty($_SERVER["HTTPS"]) ? "http://" : "https://";
-    $thisurl = $protocol . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
-    $access_log = '[dev]AccessLog => ' . $_SERVER["REMOTE_ADDR"] . ' | Method => ' . $_SERVER['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
-    file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
+    $server_info = $_SERVER;
+    receipt_webhook_request($response_code, $server_info);
 
     //ユーザーからのメッセージ取得
     $json_string = file_get_contents('php://input');
@@ -302,15 +381,13 @@
     //グループ or トークルームに参加した際はjoin,メンバーが参加した際はmemberJoined 検知した時にメンバー数をカウントする
     if ($event_type == 'join' || $event_type == 'memberJoined' || $event_type == 'leave' || $event_type == 'memberLeft') {
         $get_number_people = count_group_member($ch_type, $group_id);
-        if ($get_number_people != '') {
-            $cnt = $get_number_people->{"count"};
-            if ($event_type == 'join') { //グループにbotが参加
-                insert_group_member($db_link, $group_id, $cnt);
-            } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
-                update_group_member($db_link, $group_id, $cnt);
-            } else { //グループからbot退出
-                delete_group_member($db_link, $group_id);
-            }
+        $cnt = $get_number_people->{"count"};
+        if ($event_type == 'join') { //グループにbotが参加
+            insert_group_member($db_link, $group_id, $cnt);
+        } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
+            update_group_member($db_link, $group_id, $cnt);
+        } else { //グループからbot退出
+            delete_group_member($db_link, $group_id);
         }
     }
 
@@ -328,65 +405,32 @@
     //[＠]=>[@]に変換
     $message_text = str_replace('＠', '@', $message_text);
 
-    //ユーザ情報取得
-    $sql = sprintf("SELECT linename FROM dev_line_adminuser WHERE id = '%s'",
-        mysqli_real_escape_string($db_link, $user_id)
-    );
-    $res = mysqli_query($db_link, $sql);
-    $row = mysqli_fetch_assoc($res);
-    if (count($row['linename']) == 0) { //フォローされてない
+    //ユーザネーム取得
+    $name = get_user_name($db_link, $user_id);
+    if (count($name) == 0) { //フォローされてない
         $follow_flag = false;
         $line_name = 'ゲスト';
     } else { //フォローされている
         $follow_flag = true;
-        $line_name = $row['linename'];
+        $line_name = $name;
     }
 
     //グループ or トークルームの場合は人数を取得
-    $cnt_member = 0;
     if ($ch_type == 'group' || $ch_type == 'room') {
-        $sql = sprintf("SELECT count FROM dev_group_count_member WHERE groupId = '%s'",
-            mysqli_real_escape_string($db_link, $group_id)
-        );
-
-        $res = mysqli_query($db_link, $sql);
-        $row = mysqli_fetch_assoc($res);
-        $cnt_member = $row['count'];
+        $cnt_member = count_groupa_member($db_link, $ch_type, $group_id);
     }
 
     //支出合計を計算
-    $sum_price = 0;
-    $sql = 'SELECT price FROM dev_kakeibo WHERE ';
-    //グループ会計
-    if ($ch_type == 'group' || $ch_type == 'room') {
-        $sql .= sprintf("groupId = '%s'",
-            mysqli_real_escape_string($db_link, $group_id)
-        );
-    } else { //個人会計
-        $sql .= sprintf("id = '%s' and ch_type = 'user'",
-            mysqli_real_escape_string($db_link, $user_id)
-        );
-    }
-    // クエリの実行
-    $res = mysqli_query($db_link, $sql);
-    if ($res != false) {
-        while ($row = mysqli_fetch_assoc($res)) {
-            $sum_price = $sum_price + $row['price'];
-        }
-    }
+    $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
 
     $insert_flag = false;
     $del_flag = false;
 
     //返信メッセージ
     if ($message_text == 'いくら') {
-        if ($res != false) {
-            $return_message_text = '今月の支出は' . $sum_price . '円ニャ';
-            if ($cnt_member > 0) {
-                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
-            }
-        } else {
-            $return_message_text = 'DB_Error_1';
+        $return_message_text = '今月の支出は' . $sum_price . '円ニャ';
+        if ($cnt_member > 0) {
+            $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
         //毎日ごとの金額を集計
@@ -414,15 +458,7 @@
                 $insert_flag = false;
             }
             if ($insert_flag) {
-                $sql = sprintf("INSERT INTO dev_kakeibo (hash_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
-                    make_hash_id(),
-                    mysqli_real_escape_string($db_link, $user_id),
-                    mysqli_real_escape_string($db_link, $group_id),
-                    mysqli_real_escape_string($db_link, $message_text),
-                    mysqli_real_escape_string($db_link, $ch_type)
-                );
-                // クエリの実行
-                $res = mysqli_query($db_link, $sql);
+                $res = insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
                 if ($res) {
                     $sum_price = $sum_price + $message_text;
                     $return_message_text = "記録しましたニャ\n今月の支出合計は" . $sum_price . "円となりますニャ";
