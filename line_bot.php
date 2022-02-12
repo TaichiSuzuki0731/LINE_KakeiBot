@@ -109,8 +109,6 @@
 
         //登録実行
         mysqli_query($db_link, $sql);
-
-        mysqli_close($db_link);
     }
 
     //ユーザ情報削除
@@ -121,8 +119,6 @@
 
         //削除実行
         mysqli_query($db_link, $sql);
-
-        mysqli_close($db_link);
     }
 
     //メンバーをカウント
@@ -168,8 +164,6 @@
 
         //登録実行
         mysqli_query($db_link, $sql);
-
-        mysqli_close($db_link);
     }
 
     //メンバー数に変更があった際に更新
@@ -181,8 +175,6 @@
 
         //登録実行
         mysqli_query($db_link, $sql);
-
-        mysqli_close($db_link);
     }
 
     //botが退出した時にデリート
@@ -193,8 +185,6 @@
 
         //登録実行
         mysqli_query($db_link, $sql);
-
-        mysqli_close($db_link);
     }
 
     //kakeiboデータ識別IDの生成
@@ -239,6 +229,22 @@
         $res = mysqli_query($db_link, $sql);
 
         return $res;
+    }
+
+    //ユーザがフォロー外した時にKakeiboテーブルのデータを全削除
+    function del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id) {
+        $sql = 'DELETE FROM kakeibo WHERE ';
+        if ($ch_type == 'user') {
+            $sql .= sprintf("id = '%s' and groupId = ''",
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        } else {
+            $sql .= sprintf("groupId = '%s'",
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        }
+
+        mysqli_query($db_link, $sql);
     }
 
     //Kakeiboテーブルのデータをユーザによる操作で削除
@@ -459,6 +465,7 @@
     //ユーザ情報削除
     if ($event_type == 'unfollow') {
         del_user_info($db_link, $user_id);
+        del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id);
     }
 
     //グループ or トークルームに参加した際はjoin,メンバーが参加した際はmemberJoined 検知した時にメンバー数をカウントする
@@ -471,6 +478,7 @@
             update_group_member($db_link, $group_id, $cnt);
         } else { //グループからbot退出
             delete_group_member($db_link, $group_id);
+            del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id);
         }
     }
 
@@ -525,6 +533,7 @@
         } else {
             $return_message_text = $line_name . '支出分類の書き方がおかしいにゃん。「1000 1」のように値段の後ろに1スペースあけて分類コードを指定して送って欲しいニャン!';
             sending_messages($replyToken, $message_type, $return_message_text);
+            mysqli_close($db_link);
             exit();
         }
     }
