@@ -203,7 +203,7 @@
             $sql .= "id = '" . $user_id . "' and groupId = ''";
         } else {
             $group_id = mysqli_real_escape_string($db_link, $group_id);
-            $sql .= "groupId = '" . $group_id;
+            $sql .= "groupId = '" . $group_id . "'";
         }
         $sql .= " and DATE_FORMAT(insert_time, '%Y%m') = DATE_FORMAT(NOW(), '%Y%m') GROUP BY DATE_FORMAT(insert_time, '%Y%m%d')";
 
