@@ -17,7 +17,7 @@
 
     if(!$db_link){
         // MySQLに接続できなかったら
-        $message = "MySQL接続失敗: " . mysql_error();
+        $message = "MySQL Connect Error: " . mysql_error();
     }else{
         // MySQLに接続できたら
         $res = mysqli_query($db_link,"SHOW DATABASES");
@@ -28,7 +28,7 @@
             $command = "mysqldump " . $db_name . " --host=" . $srv . " --user=" . $db_user . " --password=" . $db_pass . " > " . $filePath . $fileName;
             system($command);
         }
-        $message = "データベースバックアップ完了";
+        $message = "Success Complete Database";
     }
 
     post_messages($message);
