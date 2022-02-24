@@ -64,6 +64,37 @@
         receipt_curl_response($result, $res_curl, 'POST');
     }
 
+    // 支出分類Flexメッセージ送信
+    function send_expenditure_classification_message($replyToken){
+        $classification_json = file_get_contents('classification.json');
+        $classification_array = json_decode($classification_json);
+
+        //ポストデータ
+        $post_data["replyToken"] = $replyToken;
+        $post_data["messages"] = [
+            $classification_array
+        ];
+
+        //curl実行
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, LINE_REPLY_URL);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json; charser=UTF-8',
+            'Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN
+        ));
+        $result = curl_exec($ch);
+        $res_curl = curl_getinfo($ch);
+        curl_close($ch);
+
+        //MessageAPIのレスポンスを記録
+        receipt_curl_response($result, $res_curl, 'POST');
+    }
+
     //著名確認用の関数
     function check_signagure($str) {
         // ハッシュ作成
@@ -326,17 +357,20 @@
         return $res;
     }
 
-    //kakeiboテーブルにデータをインサート(支出分類あり)
-    function insert_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type, $classify) {
-        $sql = sprintf("INSERT INTO dev_kakeibo (hash_id, id, groupId, price, ch_type, classify_id) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
-            make_hash_id(),
-            mysqli_real_escape_string($db_link, $user_id),
-            mysqli_real_escape_string($db_link, $group_id),
-            mysqli_real_escape_string($db_link, $message_text),
-            mysqli_real_escape_string($db_link, $ch_type),
-            mysqli_real_escape_string($db_link, $classify)
-        );
-
+    //kakeiboテーブルの日付の一番新しいデータのclassify_idを更新
+    function update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type) {
+        if ($ch_type == 'user') {
+            $sql = sprintf("UPDATE dev_kakeibo SET classify_id = '%s' WHERE id = '%s' AND groupId = '' ORDER BY insert_time DESC Limit 1",
+                mysqli_real_escape_string($db_link, $message_text),
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        } else {
+            $sql = sprintf("UPDATE dev_kakeibo SET classify_id = '%s' WHERE id = '%s' AND groupId = '%s' ORDER BY insert_time DESC Limit 1",
+                mysqli_real_escape_string($db_link, $message_text),
+                mysqli_real_escape_string($db_link, $user_id),
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        }
         // クエリの実行
         $res = mysqli_query($db_link, $sql);
 
@@ -501,8 +535,6 @@
     $message_text = str_replace('＃', '#', $message_text);
     //[％]=>[%]に変換
     $message_text = str_replace('％', '%', $message_text);
-    //[　]=>[ ]に変換
-    $message_text = str_replace('　', ' ', $message_text);
     //先頭語尾空白があった際に削除
     $message_text = trim($message_text);
 
@@ -514,28 +546,6 @@
     } else { //フォローされている
         $follow_flag = true;
         $line_name = $name . "さん\n";
-    }
-
-    //支出分類指定
-    $classify_spending_flag = false;
-
-    //分類指定があった場合
-    if (strpos($message_text, ' ') !== false) {
-        //文字列にスペースがあった場合はスペース移行を抽出
-        $classify = mb_strstr($message_text, ' ');
-        //スペースが一個のみ OK
-        if (substr_count($classify, ' ') == 1) {
-            //整形
-            $message_text = str_replace($classify, '', $message_text);
-            //スペースを削除
-            $classify = str_replace(' ', '', $classify);
-            $classify_spending_flag = true;
-        } else {
-            $return_message_text = $line_name . '支出分類の書き方がおかしいにゃん。「1000 1」のように値段の後ろに1スペースあけて分類コードを指定して送って欲しいニャン!';
-            sending_messages($replyToken, $message_type, $return_message_text);
-            mysqli_close($db_link);
-            exit();
-        }
     }
 
     //グループ or トークルームの場合は人数を取得
@@ -606,26 +616,9 @@
                 $insert_flag = false;
             }
             if ($insert_flag) {
-                $spending_array = classify_spending();
-                $spending_cnt = count($spending_array) - 1;
-                if ($classify > $spending_cnt || $classify == 0) {
-                    $classify_spending_flag = false;
-                }
-                if (!$classify_spending_flag) { //支出分類なし
-                    $res = insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
-                } else { //あり
-                    $res = insert_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type, $classify);
-                    $return_message_text = $spending_array[$classify] . "に";
-                }
-                if ($res) {
-                    $sum_price = $sum_price + $message_text;
-                    $return_message_text .= "記録しましたニャ\n今月の支出合計は" . $sum_price . "円となりますニャ";
-                    if ($cnt_member > 0) {
-                        $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
-                    }
-                } else {
-                    $return_message_text = 'DB_Error_2';
-                }
+                insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
+                send_expenditure_classification_message($replyToken);
+                exit();
             } else {
                 $return_message_text = "「-(ハイフン)」の位置は先頭のみニャ\nまた、-は2回以上は使えませんにゃ〜〜";
             }
@@ -697,19 +690,30 @@
                 $return_message_text = $hash_id . 'DB_Error_6';
             }
         }
+    } elseif (strpos($message_text, '!') !== false) {
+        $message_text = str_replace('!', '', $message_text);
+        $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
+        if ($res) {
+            $spending_array = classify_spending();
+            $return_message_text = $spending_array[$message_text] . "に分類したにゃ";
+        } else {
+            $return_message_text = $hash_id . 'DB_Error_7';
+        }
     } elseif ($message_text == 'お-い') {
         $return_message_text = <<<EOT
 ・支出がいくらか知りたい場合は「いくら」と聞いてくださいニャ
 
-・新たな支出の登録は「1000」と入力して送ってくださると嬉しいニャ。「1000 1」のように値段の後にスペースをあけて支出分類コードと一緒に送信すると支出を分類できますニャ。支出分類コードは「リスト」と送ってくれると確認できますニャ
+・新たな支出の登録は「1000」,「-1000」と入力して送ってくださると嬉しいニャ。その後に支出分類を聞かれるから答えて欲しいニャ。*支出の記録は友達登録していただいている方のみが可能ニャ。
 
-・修正したい場合は「-1000」のように数字の前に「-(ハイフン)」を入力して送ってくださいニャ。*支出の記録は友達登録していただいている方のみが可能ニャ。他にも「修正」と送ってくれると入力自体を消すことも可能にゃ
+・他にも「修正」と送ってくれると入力自体を消したり、支出分類を修正出来るにゃ。
 
 ・グループやトークルームで使った場合は、そのチャンネル内での合計支出を出せますニャ。またグループ内のメンバー数で割った一人当たりの支出も出力されますニャ
 
 ・「くわしく」と送ると毎日毎の支出が確認できますニャ
 
-・「ぶんるい」と送ると支出分類ごとの支出が確認できますニャ。
+・「ぶんるい」と送ると支出分類ごとの支出が確認できますニャ
+
+・友達登録を解除するデータが全部消えるから気をつけるにゃ🐱
 EOT;
     } else {
         exit();
