@@ -554,15 +554,14 @@
         $cnt_member = count_groupa_member($db_link, $ch_type, $group_id);
     }
 
-    //支出合計を計算
-    $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
-
     $insert_flag = false;
     $del_flag = false;
     $upd_flag = false;
 
     //返信メッセージ
     if ($message_text == 'いくら') {
+        //支出合計を計算
+        $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
         $return_message_text = '今月の支出は' . $sum_price . '円ニャ';
         if ($cnt_member > 0) {
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
@@ -570,6 +569,7 @@
     } elseif ($message_text == 'くわしく') {
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
+        $return_message_text = "====================\n";
         if ($res != false) {
             while ($row = mysqli_fetch_assoc($res)) {
                 $return_message_text .= $row['date'];
@@ -577,13 +577,15 @@
                 $return_message_text .= $row['sam_price'];
                 $return_message_text .= "\n";
             }
-            $return_message_text = substr($return_message_text, 0, -1);
         } else {
             $return_message_text = 'DB_Error_1';
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+            exit();
         }
-    } elseif ($message_text == 'ぶんるい') {
+        //分類ごとの金額を集計
         $res = get_classify_price($db_link, $ch_type, $user_id, $group_id);
         $spending_array = classify_spending();
+        $return_message_text .= "====================\n";
         if ($res != false) {
             while ($row = mysqli_fetch_assoc($res)) {
                 $spending_num = $row['classify_id'];
@@ -596,15 +598,6 @@
         } else {
             $return_message_text = 'DB_Error_4';
         }
-    } elseif ($message_text == 'リスト') {
-        $return_message_text = "【】内の文字列を値段の後ろにスペースをあけて記入して送ってくださいにゃ\n\n";
-        $spending_array = classify_spending();
-        foreach ($spending_array as $key => $row) {
-            if ($key >= 1) {
-                $return_message_text .= '【' . $key . '】' . $row . "\n";
-            }
-        }
-        $return_message_text = substr($return_message_text, 0, -1);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
             //-の位置が[0]かfalseとなる場合のみTRUE
@@ -629,7 +622,14 @@
     } elseif ($message_text == '修正') {
         $res = get_del_kakeibo($db_link, $ch_type, $user_id, $group_id);
         $return_message_text = "消したい家計簿データの【】内の文字列を@の後につけて送信してくださいニャ〜\n\n";
-        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をにxxxxxxに支出分類コードをyyに入れて送信してくださいにゃんこ\n\n";
+        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をにxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
+        $spending_array = classify_spending();
+        foreach ($spending_array as $key => $row) {
+            if ($key >= 1) {
+                $return_message_text .= '『' . $key . '』' . $row . "\n";
+            }
+        }
+        $return_message_text .= "\n";
         if ($res) {
             while ($row = mysqli_fetch_assoc($res)) {
                 $return_message_text .= '【' . $row['hash_id'] . '】¥' . $row['price'] . "\n";
@@ -696,7 +696,12 @@
         $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
         if ($res) {
             $spending_array = classify_spending();
-            $return_message_text = $spending_array[$message_text] . "に分類したにゃ";
+            $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
+            $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
+            $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
+            if ($cnt_member > 0) {
+                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
+            }
         } else {
             $return_message_text = $hash_id . 'DB_Error_7';
         }
@@ -712,8 +717,6 @@
 
 ・「くわしく」と送ると毎日毎の支出が確認できますニャ
 
-・「ぶんるい」と送ると支出分類ごとの支出が確認できますニャ
-
 ・友達登録を解除するデータが全部消えるから気をつけるにゃ🐱
 EOT;
     } else {
@@ -723,7 +726,5 @@ EOT;
     // DBとの接続解除
     mysqli_close($db_link);
 
-    $text = $line_name . $return_message_text;
-
     //返信実行
-    sending_messages($replyToken, $message_type, $text);
+    sending_messages($replyToken, $message_type, $line_name . $return_message_text);
