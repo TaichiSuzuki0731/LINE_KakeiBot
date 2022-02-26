@@ -3,6 +3,17 @@
     include('line_info.php'); //LINE_APIに接続する際に必要な情報
     include('function.inc.php'); //共通関数群
 
+    //curl実行
+    function exec_curl ($ch) {
+        $res = [];
+
+        $res['result'] = curl_exec($ch);
+        $res['getinfo'] = curl_getinfo($ch);
+        curl_close($ch);
+
+        return $res;
+    }
+
     //curlレスポンスを収集
     function receipt_curl_response($result, $res_curl, $method) {
         $strHead = substr($result, 0, $res_curl['header_size']);
@@ -56,12 +67,10 @@
             'Content-Type: application/json; charser=UTF-8',
             'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN
         ));
-        $result = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
 
-        //MessageAPIのレスポンスを記録
-        receipt_curl_response($result, $res_curl, 'POST');
+        $res = exec_curl($ch);
+
+        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
@@ -87,12 +96,9 @@
             'Content-Type: application/json; charser=UTF-8',
             'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN
         ));
-        $result = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
-        //MessageAPIのレスポンスを記録
-        receipt_curl_response($result, $res_curl, 'POST');
+        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
@@ -118,15 +124,13 @@
         curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
 
-        $response = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
         //MessageAPIのレスポンスを記録
-        receipt_curl_response($response, $res_curl, 'GET');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'GET');
 
         //レスポンスからbodyを取り出す
-        $response = substr($response, $res_curl['header_size']);
+        $response = substr($res['result'], $res['getinfo']['header_size']);
 
         $userdata = json_decode($response);
         return $userdata;
@@ -172,15 +176,13 @@
         curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN));
 
-        $response = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
         //MessageAPIのレスポンスを記録
-        receipt_curl_response($response, $res_curl, 'GET');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'GET');
 
         //レスポンスからbodyを取り出す
-        $response = substr($response, $res_curl['header_size']);
+        $response = substr($res['result'], $res['getinfo']['header_size']);
 
         $userdata = json_decode($response);
 
