@@ -451,6 +451,7 @@
     }
 
     //処理開始
+    $home_path = dirname(__FILE__);
 
     //Lineサーバに200を返す
     $response_code = http_response_code(200);
@@ -565,7 +566,8 @@
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
-        $json = file_get_contents('output_spending.json');
+        $path = $home_path . '/json/output_detail_spending.json';
+        $json = file_get_contents($path);
         $base_json = '{
             "type": "text",
             "text": "%s",
@@ -618,7 +620,8 @@
             }
             if ($insert_flag) {
                 insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
-                $send_json = file_get_contents('classification.json');
+                $path = $home_path . '/json/classification.json';
+                $send_json = file_get_contents($path);
                 send_fles_message($send_json, $replyToken);
                 exit();
             } else {
