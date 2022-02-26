@@ -65,14 +65,13 @@
     }
 
     // 支出分類Flexメッセージ送信
-    function send_expenditure_classification_message($replyToken){
-        $classification_json = file_get_contents('classification.json');
-        $classification_array = json_decode($classification_json);
+    function send_fles_message($send_json, $replyToken){
+        $send_array = json_decode($send_json);
 
         //ポストデータ
         $post_data["replyToken"] = $replyToken;
         $post_data["messages"] = [
-            $classification_array
+            $send_array
         ];
 
         //curl実行
@@ -433,10 +432,10 @@
     function classify_spending() {
         $spending = [
             0 => '未設定',
-            1 => '食費',
+            1 => '食料費',
             2 => '生活費',
             3 => '衣服費',
-            4 => '美容健康費',
+            4 => '美健費',
             5 => '交際費',
             6 => '交通費',
             7 => '娯楽費',
@@ -444,7 +443,7 @@
             9 => '通信費',
             10 => '光熱費',
             11 => '住居費',
-            12 => '冠婚葬祭費',
+            12 => '慶弔費',
             13 => 'その他'
         ];
 
@@ -566,37 +565,46 @@
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
+        $json = file_get_contents('output_spending.json');
+        $base_json = '{
+            "type": "text",
+            "text": "%s",
+            "size": "lg"
+            },';
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
-        $return_message_text = "====================\n";
-        if ($res != false) {
-            while ($row = mysqli_fetch_assoc($res)) {
-                $return_message_text .= $row['date'];
-                $return_message_text .= '=>¥';
-                $return_message_text .= $row['sam_price'];
-                $return_message_text .= "\n";
-            }
-        } else {
-            $return_message_text = 'DB_Error_1';
+        if (!$res) {
+            $return_message_text = 'ErrorCode:1 管理者エラーコードを教えてくださいにゃ';
             sending_messages($replyToken, $message_type, $line_name . $return_message_text);
             exit();
         }
+
+        while ($row = mysqli_fetch_assoc($res)) {
+            $text = $row['date'];
+            $text .= ' => ¥';
+            $text .= $row['sam_price'];
+            $add_json .= sprintf($base_json, $text);
+        }
+
         //分類ごとの金額を集計
         $res = get_classify_price($db_link, $ch_type, $user_id, $group_id);
-        $spending_array = classify_spending();
-        $return_message_text .= "====================\n";
-        if ($res != false) {
-            while ($row = mysqli_fetch_assoc($res)) {
-                $spending_num = $row['classify_id'];
-                $return_message_text .= $spending_array[$spending_num];
-                $return_message_text .= '=>¥';
-                $return_message_text .= $row['sam_price'];
-                $return_message_text .= "\n";
-            }
-            $return_message_text = substr($return_message_text, 0, -1);
-        } else {
-            $return_message_text = 'DB_Error_4';
+        if (!$res) {
+            $return_message_text = 'ErrorCode:2 管理者エラーコードを教えてくださいにゃ';
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+            exit();
         }
+
+        $spending_array = classify_spending();
+        while ($row = mysqli_fetch_assoc($res)) {
+            $spending_num = $row['classify_id'];
+            $text = $spending_array[$spending_num];
+            $text .= ' => ¥';
+            $text .= $row['sam_price'];
+            $add_json2 .= sprintf($base_json, $text);
+        }
+
+        $json = sprintf($json, $add_json, $add_json2);
+        send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
             //-の位置が[0]かfalseとなる場合のみTRUE
@@ -610,7 +618,8 @@
             }
             if ($insert_flag) {
                 insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
-                send_expenditure_classification_message($replyToken);
+                $send_json = file_get_contents('classification.json');
+                send_fles_message($send_json, $replyToken);
                 exit();
             } else {
                 $return_message_text = "「-(ハイフン)」の位置は先頭のみニャ\nまた、-は2回以上は使えませんにゃ〜〜";
@@ -635,7 +644,7 @@
             }
             $return_message_text = substr($return_message_text, 0, -1);
         } else {
-            $return_message_text = 'DB_Error_5';
+            $return_message_text = 'ErrorCode:3 管理者エラーコードを教えてくださいにゃ';
         }
     } elseif (strpos($message_text, '@') !== false) {
         //@の位置が[0]のみ
@@ -653,7 +662,7 @@
             if ($res) {
                 $return_message_text = $message_text . "を削除したニャ";
             } else {
-                $return_message_text = $hash_id . 'DB_Error_3';
+                $return_message_text = $hash_id . 'ErrorCode:4 管理者エラーコードを教えてくださいにゃ';
             }
         } else {
             $return_message_text = "「@」の位置は先頭のみニャ\nまた、@は2回以上は使えませんにゃ〜〜";
@@ -687,7 +696,7 @@
             if ($res) {
                 $return_message_text = $message_text . "を修正したニャ";
             } else {
-                $return_message_text = $hash_id . 'DB_Error_6';
+                $return_message_text = $hash_id . 'ErrorCode:5 管理者エラーコードを教えてくださいにゃ';
             }
         }
     } elseif (strpos($message_text, '!') !== false) {
@@ -702,7 +711,7 @@
                 $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
             }
         } else {
-            $return_message_text = $hash_id . 'DB_Error_7';
+            $return_message_text = $hash_id . 'ErrorCode:6 管理者エラーコードを教えてくださいにゃ';
         }
     } elseif ($message_text == 'お-い') {
         $return_message_text = <<<EOT

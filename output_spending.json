@@ -1,0 +1,47 @@
+{
+  "type": "flex",
+  "altText": "This is a Flex Message",
+  "contents": 
+  {
+    "type": "bubble",
+    "body": {
+      "type": "box",
+      "layout": "vertical",
+      "contents": [
+        {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
+              "text": "毎日の出費",
+              "size": "xl",
+              "contents": [],
+              "margin": "xs"
+            },
+            %s
+            {
+              "type": "separator"
+            }
+          ]
+        },
+        {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
+              "text": "分類毎の出費",
+              "size": "xl",
+              "margin": "xs"
+            },
+            %s
+            {
+                "type": "separator"
+              }
+          ]
+        }
+      ]
+    }
+  }
+}
