@@ -26,7 +26,7 @@
                     "type": "button",
                     "action": {
                         "type": "message",
-                        "label": "食費",
+                        "label": "食料費",
                         "text": "!1"
                     }
                 },
@@ -50,7 +50,7 @@
                     "type": "button",
                     "action": {
                         "type": "message",
-                        "label": "美容健康費",
+                        "label": "美健費",
                         "text": "!4"
                     }
                 },
@@ -114,7 +114,7 @@
                     "type": "button",
                     "action": {
                         "type": "message",
-                        "label": "冠婚葬祭費",
+                        "label": "慶弔費",
                         "text": "!12"
                 }
                 },
