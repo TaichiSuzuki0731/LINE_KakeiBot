@@ -62,6 +62,7 @@
 
         //MessageAPIのレスポンスを記録
         receipt_curl_response($result, $res_curl, 'POST');
+        exit();
     }
 
     // 支出分類Flexメッセージ送信
@@ -92,6 +93,7 @@
 
         //MessageAPIのレスポンスを記録
         receipt_curl_response($result, $res_curl, 'POST');
+        exit();
     }
 
     //著名確認用の関数
@@ -445,8 +447,8 @@
     //データベースエラー時のメッセージ送信
     function send_db_error ($error_code, $replyToken, $message_type) {
         $return_message_text = 'ErrorCode:' . $error_code . '管理者エラーコードを教えてくださいにゃ';
+        mysqli_close($db_link);
         sending_messages($replyToken, $message_type, $return_message_text);
-        exit();
     }
 
     //処理開始
@@ -556,9 +558,8 @@
     if ($now_time < $end_maintenance_time) {
         if ($user_id != LINE_PRIVATE_ID && $user_id != DEV_LINE_PRIVATE_ID) {
             $return_message_text = $end_maintenance_time . "まで\nメンテナンス中にゃー🐱";
-            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
             mysqli_close($db_link);
-            exit();
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
         }
     }
 
@@ -616,6 +617,7 @@
         }
 
         $json = sprintf($json, $add_json, $add_json2);
+        mysqli_close($db_link);
         send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
@@ -632,8 +634,8 @@
                 insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type);
                 $path = $home_path . '/json/classification.json';
                 $send_json = file_get_contents($path);
+                mysqli_close($db_link);
                 send_fles_message($send_json, $replyToken);
-                exit();
             } else {
                 $return_message_text = "「-(ハイフン)」の位置は先頭のみニャ\nまた、-は2回以上は使えませんにゃ〜〜";
             }
