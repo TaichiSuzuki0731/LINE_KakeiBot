@@ -3,10 +3,9 @@
 
     $message = 'copy_access_log: ';
 
-    $home_path = dirname(__FILE__);
     $second_path  = '/compress_folder/';
-    $compress_file = 'access.log';
-    $file = $home_path . $second_path . 'compress_access_log_' . date(Ymd) . '.zip';
+    $compress_file = ROOT_DIRECTOR . $second_path . 'access.log';
+    $file = ROOT_DIRECTOR . $second_path . 'compress_access_log_' . date(Ymd) . '.zip';
 
     // 圧縮・解凍するためのオブジェクト生成
     $zip = new ZipArchive();

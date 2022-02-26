@@ -1,7 +1,7 @@
 <?php
     include('line_api_info.php'); //LINE_API情報
-    include('line_info.php'); //LINE_APIに接続する際に必要な情報
     include('function.inc.php'); //共通関数群
+    include(ROOT_DIRECTOR . '/line_info/line_info.php'); //LINE_APIに接続する際に必要な情報
 
     //curl実行
     function exec_curl ($ch) {
@@ -30,7 +30,7 @@
             $ary_header[$key] = trim($val);
         }
         $log = '[pro]x-line-request-id => ' . $ary_header['x-line-request-id'] . ' | Method => ' . $method . ' | EndPoint => ' . $res_curl['url'] . ' | StatusCode => ' . $res_curl['http_code'] . ' | date => ' . $ary_header['date'];
-        file_put_contents('access.log', $log . "\n", FILE_APPEND);
+        file_put_contents(ROOT_DIRECTOR . '/compress_folder/access.log', $log . "\n", FILE_APPEND);
     }
 
     //Webhook受信時のログ
@@ -38,7 +38,7 @@
         $protocol = empty($server_info["HTTPS"]) ? "http://" : "https://";
         $thisurl = $protocol . $server_info["HTTP_HOST"] . $server_info["REQUEST_URI"];
         $access_log = '[pro]AccessLog => ' . $server_info["REMOTE_ADDR"] . ' | Method => ' . $server_info['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
-        file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
+        file_put_contents(ROOT_DIRECTOR . '/compress_folder/access.log', $access_log . "\n", FILE_APPEND);
     }
 
     //メッセージの送信
@@ -454,7 +454,6 @@
     }
 
     //処理開始
-    $home_path = dirname(__FILE__);
     date_default_timezone_set('Asia/Tokyo');
     $now_time = date("Y-m-d G:i:s");
     //↓メンテナンス時間を設定
@@ -583,7 +582,7 @@
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
-        $path = $home_path . '/json/output_detail_spending.json';
+        $path = ROOT_DIRECTOR . '/json/output_detail_spending.json';
         $json = file_get_contents($path);
         $base_json = '{
             "type": "text",
@@ -634,7 +633,7 @@
             }
             if ($insert_flag) {
                 insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type);
-                $path = $home_path . '/json/classification.json';
+                $path = ROOT_DIRECTOR . '/json/classification.json';
                 $send_json = file_get_contents($path);
                 mysqli_close($db_link);
                 send_fles_message($send_json, $replyToken);
