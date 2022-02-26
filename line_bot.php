@@ -217,14 +217,6 @@
         mysqli_query($db_link, $sql);
     }
 
-    //kakeiboデータ識別IDの生成
-    function make_hash_id() {
-        $str = date("YmdHis") . "." . substr(explode(".", microtime(true))[1], 0, 3);
-        $hased_string = hash('crc32', $str);
-
-        return $hased_string;
-    }
-
     //kakeiboテーブルから毎日ごとの集計を取得
     function get_date_price($db_link, $ch_type, $user_id, $group_id) {
         $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM kakeibo where ";
@@ -281,12 +273,12 @@
     function del_kakeibo_deta($db_link, $ch_type, $hash_id, $user_id, $group_id) {
         $sql = 'DELETE FROM kakeibo WHERE ';
         if ($ch_type == 'user') {
-            $sql .= sprintf("hash_id = '%s' and id = '%s' and groupId = ''",
+            $sql .= sprintf("message_id = '%s' and id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $user_id)
             );
         } else {
-            $sql .= sprintf("hash_id = '%s' and groupId = '%s'",
+            $sql .= sprintf("message_id = '%s' and groupId = '%s'",
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $group_id)
             );
@@ -302,13 +294,13 @@
     function update_classify_id($db_link, $ch_type, $hash_id, $user_id, $group_id, $classify) {
         $sql = 'UPDATE kakeibo SET classify_id = ';
         if ($ch_type == 'user') {
-            $sql .= sprintf("'%s' where hash_id = '%s' and id = '%s' and groupId = ''",
+            $sql .= sprintf("'%s' where message_id = '%s' and id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $classify),
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $user_id)
             );
         } else {
-            $sql .= sprintf("'%s' where hash_id = '%s' and groupId = '%s'",
+            $sql .= sprintf("'%s' where message_id = '%s' and groupId = '%s'",
                 mysqli_real_escape_string($db_link, $classify),
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $group_id)
@@ -323,7 +315,7 @@
 
     //修正用データの抽出
     function get_del_kakeibo($db_link, $ch_type, $user_id, $group_id) {
-        $sql = 'SELECT hash_id, price FROM kakeibo WHERE ';
+        $sql = 'SELECT message_id, price, classify_id FROM kakeibo WHERE ';
         if ($ch_type == 'user') {
             $sql .= sprintf("id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $user_id)
@@ -341,9 +333,9 @@
     }
 
     //kakeiboテーブルにデータをインサート
-    function insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type) {
-        $sql = sprintf("INSERT INTO kakeibo (hash_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
-            make_hash_id(),
+    function insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type) {
+        $sql = sprintf("INSERT INTO kakeibo (message_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
+            mysqli_real_escape_string($db_link, $message_id),
             mysqli_real_escape_string($db_link, $user_id),
             mysqli_real_escape_string($db_link, $group_id),
             mysqli_real_escape_string($db_link, $message_text),
@@ -459,6 +451,10 @@
 
     //処理開始
     $home_path = dirname(__FILE__);
+    date_default_timezone_set('Asia/Tokyo');
+    $now_time = date("Y-m-d G:i:s");
+    //↓メンテナンス時間を設定
+    $end_maintenance_time   = '2022-02-26 17:00:00'; //YYYY-mm-dd GG:ii:ss
 
     //Lineサーバに200を返す
     $response_code = http_response_code(200);
@@ -488,6 +484,7 @@
     //取得データを変数に格納
     $event_type   = h($json_object->{"events"}[0]->{"type"});                   //イベントタイプ
     $replyToken   = h($json_object->{"events"}[0]->{"replyToken"});             //返信用トークン
+    $message_id   = h($json_object->{"events"}[0]->{"message"}->{"id"});        //メッセージID
     $message_type = h($json_object->{"events"}[0]->{"message"}->{"type"});      //メッセージタイプ
     $message_text = h($json_object->{"events"}[0]->{"message"}->{"text"});      //メッセージ内容
     $ch_type      = h($json_object->{"events"}[0]->{"source"}->{"type"});       //チャンネルのタイプ
@@ -553,6 +550,16 @@
     } else { //フォローされている
         $follow_flag = true;
         $line_name = $name . "さん\n";
+    }
+
+    //メンテナンス時間
+    if ($now_time < $end_maintenance_time) {
+        if ($user_id != LINE_PRIVATE_ID && $user_id != DEV_LINE_PRIVATE_ID) {
+            $return_message_text = $end_maintenance_time . "まで\nメンテナンス中にゃー🐱";
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+            mysqli_close($db_link);
+            exit();
+        }
     }
 
     //グループ or トークルームの場合は人数を取得
@@ -622,7 +629,7 @@
                 $insert_flag = false;
             }
             if ($insert_flag) {
-                insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
+                insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type);
                 $path = $home_path . '/json/classification.json';
                 $send_json = file_get_contents($path);
                 send_fles_message($send_json, $replyToken);
@@ -640,7 +647,7 @@
         }
 
         $return_message_text = "消したい家計簿データの【】内の文字列を@の後につけて送信してくださいニャ〜\n\n";
-        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をにxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
+        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
         $spending_array = classify_spending();
         foreach ($spending_array as $key => $row) {
             if ($key >= 1) {
@@ -649,7 +656,8 @@
         }
         $return_message_text .= "\n";
         while ($row = mysqli_fetch_assoc($res)) {
-            $return_message_text .= '【' . $row['hash_id'] . '】¥' . $row['price'] . "\n";
+            $num = $row['classify_id'];
+            $return_message_text .= $spending_array[$num] . ' 【' . $row['message_id'] . '】 ¥' . $row['price'] . "\n";
         }
         $return_message_text = substr($return_message_text, 0, -1);
     } elseif (strpos($message_text, '@') !== false) {
