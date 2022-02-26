@@ -450,6 +450,13 @@
         return $spending;
     }
 
+    //データベースエラー時のメッセージ送信
+    function send_db_error ($error_code, $replyToken, $message_type) {
+        $return_message_text = 'ErrorCode:' . $error_code . '管理者エラーコードを教えてくださいにゃ';
+        sending_messages($replyToken, $message_type, $return_message_text);
+        exit();
+    }
+
     //処理開始
     $home_path = dirname(__FILE__);
 
@@ -576,9 +583,7 @@
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
-            $return_message_text = 'ErrorCode:1 管理者エラーコードを教えてくださいにゃ';
-            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
-            exit();
+            send_db_error(1, $replyToken, $message_type);
         }
 
         while ($row = mysqli_fetch_assoc($res)) {
@@ -591,9 +596,7 @@
         //分類ごとの金額を集計
         $res = get_classify_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
-            $return_message_text = 'ErrorCode:2 管理者エラーコードを教えてくださいにゃ';
-            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
-            exit();
+            send_db_error(2, $replyToken, $message_type);
         }
 
         $spending_array = classify_spending();
@@ -632,6 +635,10 @@
         }
     } elseif ($message_text == '修正') {
         $res = get_del_kakeibo($db_link, $ch_type, $user_id, $group_id);
+        if (!$res) {
+            send_db_error(3, $replyToken, $message_type);
+        }
+
         $return_message_text = "消したい家計簿データの【】内の文字列を@の後につけて送信してくださいニャ〜\n\n";
         $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をにxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
         $spending_array = classify_spending();
@@ -641,14 +648,10 @@
             }
         }
         $return_message_text .= "\n";
-        if ($res) {
-            while ($row = mysqli_fetch_assoc($res)) {
-                $return_message_text .= '【' . $row['hash_id'] . '】¥' . $row['price'] . "\n";
-            }
-            $return_message_text = substr($return_message_text, 0, -1);
-        } else {
-            $return_message_text = 'ErrorCode:3 管理者エラーコードを教えてくださいにゃ';
+        while ($row = mysqli_fetch_assoc($res)) {
+            $return_message_text .= '【' . $row['hash_id'] . '】¥' . $row['price'] . "\n";
         }
+        $return_message_text = substr($return_message_text, 0, -1);
     } elseif (strpos($message_text, '@') !== false) {
         //@の位置が[0]のみ
         $mb_str = mb_strpos($message_text, '@');
@@ -662,11 +665,11 @@
         if ($del_flag) {
             $message_text = (str_replace('@', '', $message_text));
             $res = del_kakeibo_deta($db_link, $ch_type, $message_text, $user_id, $group_id);
-            if ($res) {
-                $return_message_text = $message_text . "を削除したニャ";
-            } else {
-                $return_message_text = $hash_id . 'ErrorCode:4 管理者エラーコードを教えてくださいにゃ';
+            if (!$res) {
+                send_db_error(4, $replyToken, $message_type);
             }
+
+            $return_message_text = $message_text . "を削除したニャ";
         } else {
             $return_message_text = "「@」の位置は先頭のみニャ\nまた、@は2回以上は使えませんにゃ〜〜";
         }
@@ -696,25 +699,25 @@
         if ($upd_flag) {
             $message_text = str_replace('#', '', $message_text);
             $res = update_classify_id($db_link, $ch_type, $message_text, $user_id, $group_id, $classify);
-            if ($res) {
-                $return_message_text = $message_text . "を修正したニャ";
-            } else {
-                $return_message_text = $hash_id . 'ErrorCode:5 管理者エラーコードを教えてくださいにゃ';
+            if (!$res) {
+                send_db_error(5, $replyToken, $message_type);
             }
+
+            $return_message_text = $message_text . "を修正したニャ";
         }
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
         $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
-        if ($res) {
-            $spending_array = classify_spending();
-            $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
-            $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
-            $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
-            if ($cnt_member > 0) {
-                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
-            }
-        } else {
-            $return_message_text = $hash_id . 'ErrorCode:6 管理者エラーコードを教えてくださいにゃ';
+        if (!$res) {
+            send_db_error(6, $replyToken, $message_type);
+        }
+
+        $spending_array = classify_spending();
+        $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
+        $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
+        $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
+        if ($cnt_member > 0) {
+            $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'お-い') {
         $return_message_text = <<<EOT
