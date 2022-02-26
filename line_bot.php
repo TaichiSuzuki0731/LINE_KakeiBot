@@ -447,7 +447,7 @@
     }
 
     //データベースエラー時のメッセージ送信
-    function send_db_error ($error_code, $replyToken, $message_type) {
+    function send_db_error($error_code, $replyToken, $message_type) {
         $return_message_text = 'ErrorCode:' . $error_code . '管理者エラーコードを教えてくださいにゃ';
         mysqli_close($db_link);
         sending_messages($replyToken, $message_type, $return_message_text);
