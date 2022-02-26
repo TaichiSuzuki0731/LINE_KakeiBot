@@ -62,6 +62,7 @@
 
         //MessageAPIのレスポンスを記録
         receipt_curl_response($result, $res_curl, 'POST');
+        exit();
     }
 
     // 支出分類Flexメッセージ送信
@@ -92,6 +93,7 @@
 
         //MessageAPIのレスポンスを記録
         receipt_curl_response($result, $res_curl, 'POST');
+        exit();
     }
 
     //著名確認用の関数
@@ -217,14 +219,6 @@
         mysqli_query($db_link, $sql);
     }
 
-    //kakeiboデータ識別IDの生成
-    function make_hash_id() {
-        $str = date("YmdHis") . "." . substr(explode(".", microtime(true))[1], 0, 3);
-        $hased_string = hash('crc32', $str);
-
-        return $hased_string;
-    }
-
     //kakeiboテーブルから毎日ごとの集計を取得
     function get_date_price($db_link, $ch_type, $user_id, $group_id) {
         $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m/%d') AS date, sum(price) AS sam_price FROM dev_kakeibo where ";
@@ -281,12 +275,12 @@
     function del_kakeibo_deta($db_link, $ch_type, $hash_id, $user_id, $group_id) {
         $sql = 'DELETE FROM dev_kakeibo WHERE ';
         if ($ch_type == 'user') {
-            $sql .= sprintf("hash_id = '%s' and id = '%s' and groupId = ''",
+            $sql .= sprintf("message_id = '%s' and id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $user_id)
             );
         } else {
-            $sql .= sprintf("hash_id = '%s' and groupId = '%s'",
+            $sql .= sprintf("message_id = '%s' and groupId = '%s'",
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $group_id)
             );
@@ -302,13 +296,13 @@
     function update_classify_id($db_link, $ch_type, $hash_id, $user_id, $group_id, $classify) {
         $sql = 'UPDATE dev_kakeibo SET classify_id = ';
         if ($ch_type == 'user') {
-            $sql .= sprintf("'%s' where hash_id = '%s' and id = '%s' and groupId = ''",
+            $sql .= sprintf("'%s' where message_id = '%s' and id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $classify),
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $user_id)
             );
         } else {
-            $sql .= sprintf("'%s' where hash_id = '%s' and groupId = '%s'",
+            $sql .= sprintf("'%s' where message_id = '%s' and groupId = '%s'",
                 mysqli_real_escape_string($db_link, $classify),
                 mysqli_real_escape_string($db_link, $hash_id),
                 mysqli_real_escape_string($db_link, $group_id)
@@ -323,7 +317,7 @@
 
     //修正用データの抽出
     function get_del_kakeibo($db_link, $ch_type, $user_id, $group_id) {
-        $sql = 'SELECT hash_id, price FROM dev_kakeibo WHERE ';
+        $sql = 'SELECT message_id, price, classify_id FROM dev_kakeibo WHERE ';
         if ($ch_type == 'user') {
             $sql .= sprintf("id = '%s' and groupId = ''",
                 mysqli_real_escape_string($db_link, $user_id)
@@ -341,9 +335,9 @@
     }
 
     //kakeiboテーブルにデータをインサート
-    function insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type) {
-        $sql = sprintf("INSERT INTO dev_kakeibo (hash_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
-            make_hash_id(),
+    function insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type) {
+        $sql = sprintf("INSERT INTO dev_kakeibo (message_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
+            mysqli_real_escape_string($db_link, $message_id),
             mysqli_real_escape_string($db_link, $user_id),
             mysqli_real_escape_string($db_link, $group_id),
             mysqli_real_escape_string($db_link, $message_text),
@@ -450,7 +444,19 @@
         return $spending;
     }
 
+    //データベースエラー時のメッセージ送信
+    function send_db_error ($error_code, $replyToken, $message_type) {
+        $return_message_text = 'ErrorCode:' . $error_code . '管理者エラーコードを教えてくださいにゃ';
+        mysqli_close($db_link);
+        sending_messages($replyToken, $message_type, $return_message_text);
+    }
+
     //処理開始
+    $home_path = dirname(__FILE__);
+    date_default_timezone_set('Asia/Tokyo');
+    $now_time = date("Y-m-d G:i:s");
+    //↓メンテナンス時間を設定
+    $end_maintenance_time   = '2022-02-26 16:00:00'; //YYYY-mm-dd GG:ii:ss
 
     //Lineサーバに200を返す
     $response_code = http_response_code(200);
@@ -480,6 +486,7 @@
     //取得データを変数に格納
     $event_type   = h($json_object->{"events"}[0]->{"type"});                   //イベントタイプ
     $replyToken   = h($json_object->{"events"}[0]->{"replyToken"});             //返信用トークン
+    $message_id   = h($json_object->{"events"}[0]->{"message"}->{"id"});        //メッセージID
     $message_type = h($json_object->{"events"}[0]->{"message"}->{"type"});      //メッセージタイプ
     $message_text = h($json_object->{"events"}[0]->{"message"}->{"text"});      //メッセージ内容
     $ch_type      = h($json_object->{"events"}[0]->{"source"}->{"type"});       //チャンネルのタイプ
@@ -547,6 +554,15 @@
         $line_name = $name . "さん\n";
     }
 
+    //メンテナンス時間
+    if ($now_time < $end_maintenance_time) {
+        if ($user_id != LINE_PRIVATE_ID && $user_id != DEV_LINE_PRIVATE_ID) {
+            $return_message_text = $end_maintenance_time . "まで\nメンテナンス中にゃー🐱";
+            mysqli_close($db_link);
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+        }
+    }
+
     //グループ or トークルームの場合は人数を取得
     if ($ch_type == 'group' || $ch_type == 'room') {
         $cnt_member = count_groupa_member($db_link, $ch_type, $group_id);
@@ -565,7 +581,8 @@
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
-        $json = file_get_contents('output_spending.json');
+        $path = $home_path . '/json/output_detail_spending.json';
+        $json = file_get_contents($path);
         $base_json = '{
             "type": "text",
             "text": "%s",
@@ -574,9 +591,7 @@
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
-            $return_message_text = 'ErrorCode:1 管理者エラーコードを教えてくださいにゃ';
-            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
-            exit();
+            send_db_error(1, $replyToken, $message_type);
         }
 
         while ($row = mysqli_fetch_assoc($res)) {
@@ -589,9 +604,7 @@
         //分類ごとの金額を集計
         $res = get_classify_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
-            $return_message_text = 'ErrorCode:2 管理者エラーコードを教えてくださいにゃ';
-            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
-            exit();
+            send_db_error(2, $replyToken, $message_type);
         }
 
         $spending_array = classify_spending();
@@ -604,6 +617,7 @@
         }
 
         $json = sprintf($json, $add_json, $add_json2);
+        mysqli_close($db_link);
         send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
@@ -617,10 +631,11 @@
                 $insert_flag = false;
             }
             if ($insert_flag) {
-                insert_kakeibo($db_link, $user_id, $group_id, $message_text, $ch_type);
-                $send_json = file_get_contents('classification.json');
+                insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type);
+                $path = $home_path . '/json/classification.json';
+                $send_json = file_get_contents($path);
+                mysqli_close($db_link);
                 send_fles_message($send_json, $replyToken);
-                exit();
             } else {
                 $return_message_text = "「-(ハイフン)」の位置は先頭のみニャ\nまた、-は2回以上は使えませんにゃ〜〜";
             }
@@ -629,8 +644,12 @@
         }
     } elseif ($message_text == '修正') {
         $res = get_del_kakeibo($db_link, $ch_type, $user_id, $group_id);
+        if (!$res) {
+            send_db_error(3, $replyToken, $message_type);
+        }
+
         $return_message_text = "消したい家計簿データの【】内の文字列を@の後につけて送信してくださいニャ〜\n\n";
-        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をにxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
+        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
         $spending_array = classify_spending();
         foreach ($spending_array as $key => $row) {
             if ($key >= 1) {
@@ -638,14 +657,11 @@
             }
         }
         $return_message_text .= "\n";
-        if ($res) {
-            while ($row = mysqli_fetch_assoc($res)) {
-                $return_message_text .= '【' . $row['hash_id'] . '】¥' . $row['price'] . "\n";
-            }
-            $return_message_text = substr($return_message_text, 0, -1);
-        } else {
-            $return_message_text = 'ErrorCode:3 管理者エラーコードを教えてくださいにゃ';
+        while ($row = mysqli_fetch_assoc($res)) {
+            $num = $row['classify_id'];
+            $return_message_text .= $spending_array[$num] . ' 【' . $row['message_id'] . '】 ¥' . $row['price'] . "\n";
         }
+        $return_message_text = substr($return_message_text, 0, -1);
     } elseif (strpos($message_text, '@') !== false) {
         //@の位置が[0]のみ
         $mb_str = mb_strpos($message_text, '@');
@@ -659,11 +675,11 @@
         if ($del_flag) {
             $message_text = (str_replace('@', '', $message_text));
             $res = del_kakeibo_deta($db_link, $ch_type, $message_text, $user_id, $group_id);
-            if ($res) {
-                $return_message_text = $message_text . "を削除したニャ";
-            } else {
-                $return_message_text = $hash_id . 'ErrorCode:4 管理者エラーコードを教えてくださいにゃ';
+            if (!$res) {
+                send_db_error(4, $replyToken, $message_type);
             }
+
+            $return_message_text = $message_text . "を削除したニャ";
         } else {
             $return_message_text = "「@」の位置は先頭のみニャ\nまた、@は2回以上は使えませんにゃ〜〜";
         }
@@ -693,25 +709,25 @@
         if ($upd_flag) {
             $message_text = str_replace('#', '', $message_text);
             $res = update_classify_id($db_link, $ch_type, $message_text, $user_id, $group_id, $classify);
-            if ($res) {
-                $return_message_text = $message_text . "を修正したニャ";
-            } else {
-                $return_message_text = $hash_id . 'ErrorCode:5 管理者エラーコードを教えてくださいにゃ';
+            if (!$res) {
+                send_db_error(5, $replyToken, $message_type);
             }
+
+            $return_message_text = $message_text . "を修正したニャ";
         }
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
         $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
-        if ($res) {
-            $spending_array = classify_spending();
-            $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
-            $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
-            $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
-            if ($cnt_member > 0) {
-                $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
-            }
-        } else {
-            $return_message_text = $hash_id . 'ErrorCode:6 管理者エラーコードを教えてくださいにゃ';
+        if (!$res) {
+            send_db_error(6, $replyToken, $message_type);
+        }
+
+        $spending_array = classify_spending();
+        $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
+        $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
+        $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
+        if ($cnt_member > 0) {
+            $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'お-い') {
         $return_message_text = <<<EOT
