@@ -1,7 +1,19 @@
 <?php
     include('line_api_info.php'); //LINE_API情報
-    include('line_info.php'); //LINE_APIに接続する際に必要な情報
     include('function.inc.php'); //共通関数群
+    include(ROOT_DIRECTOR . '/line_info/line_info.php'); //LINE_APIに接続する際に必要な情報
+    include('dev_line_bot.inc.php');
+
+    //curl実行
+    function exec_curl ($ch) {
+        $res = [];
+
+        $res['result'] = curl_exec($ch);
+        $res['getinfo'] = curl_getinfo($ch);
+        curl_close($ch);
+
+        return $res;
+    }
 
     //curlレスポンスを収集
     function receipt_curl_response($result, $res_curl, $method) {
@@ -19,7 +31,7 @@
             $ary_header[$key] = trim($val);
         }
         $log = '[dev]x-line-request-id => ' . $ary_header['x-line-request-id'] . ' | Method => ' . $method . ' | EndPoint => ' . $res_curl['url'] . ' | StatusCode => ' . $res_curl['http_code'] . ' | date => ' . $ary_header['date'];
-        file_put_contents('access.log', $log . "\n", FILE_APPEND);
+        file_put_contents(ROOT_DIRECTOR . '/compress_folder/access.log', $log . "\n", FILE_APPEND);
     }
 
     //Webhook受信時のログ
@@ -27,7 +39,7 @@
         $protocol = empty($server_info["HTTPS"]) ? "http://" : "https://";
         $thisurl = $protocol . $server_info["HTTP_HOST"] . $server_info["REQUEST_URI"];
         $access_log = '[dev]AccessLog => ' . $server_info["REMOTE_ADDR"] . ' | Method => ' . $server_info['REQUEST_METHOD'] . ' | RequestPath => ' . $thisurl . ' | StatusCode => ' . $response_code . ' | time => ' . date("Y/m/d H:i:s");
-        file_put_contents('access.log', $access_log . "\n", FILE_APPEND);
+        file_put_contents(ROOT_DIRECTOR . '/compress_folder/access.log', $access_log . "\n", FILE_APPEND);
     }
 
     //メッセージの送信
@@ -56,12 +68,10 @@
             'Content-Type: application/json; charser=UTF-8',
             'Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN
         ));
-        $result = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
 
-        //MessageAPIのレスポンスを記録
-        receipt_curl_response($result, $res_curl, 'POST');
+        $res = exec_curl($ch);
+
+        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
@@ -87,12 +97,9 @@
             'Content-Type: application/json; charser=UTF-8',
             'Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN
         ));
-        $result = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
-        //MessageAPIのレスポンスを記録
-        receipt_curl_response($result, $res_curl, 'POST');
+        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
@@ -118,15 +125,13 @@
         curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN));
 
-        $response = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
         //MessageAPIのレスポンスを記録
-        receipt_curl_response($response, $res_curl, 'GET');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'GET');
 
         //レスポンスからbodyを取り出す
-        $response = substr($response, $res_curl['header_size']);
+        $response = substr($res['result'], $res['getinfo']['header_size']);
 
         $userdata = json_decode($response);
         return $userdata;
@@ -172,15 +177,13 @@
         curl_setopt($ch, CURLOPT_HEADER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN));
 
-        $response = curl_exec($ch);
-        $res_curl = curl_getinfo($ch);
-        curl_close($ch);
+        $res = exec_curl($ch);
 
         //MessageAPIのレスポンスを記録
-        receipt_curl_response($response, $res_curl, 'GET');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'GET');
 
         //レスポンスからbodyを取り出す
-        $response = substr($response, $res_curl['header_size']);
+        $response = substr($res['result'], $res['getinfo']['header_size']);
 
         $userdata = json_decode($response);
 
@@ -249,6 +252,25 @@
             );
         }
         $sql .= " and DATE_FORMAT(insert_time, '%Y%m') = DATE_FORMAT(NOW(), '%Y%m') group by classify_id";
+
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
+    //kakeiboテーブルから毎月ごとの集計
+    function get_monthly_price($db_link, $ch_type, $user_id, $group_id) {
+        $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m') AS monthly, sum(price) AS sam_price FROM dev_kakeibo where ";
+        if ($ch_type == 'user') {
+            $sql .= sprintf("id = '%s' AND groupId = '' ",
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        } else {
+            $sql .= sprintf("groupId = '%s' ",
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        }
+        $sql .= "GROUP BY DATE_FORMAT(insert_time, '%Y%m')";
 
         $res = mysqli_query($db_link, $sql);
 
@@ -445,14 +467,13 @@
     }
 
     //データベースエラー時のメッセージ送信
-    function send_db_error ($error_code, $replyToken, $message_type) {
+    function send_db_error($error_code, $replyToken, $message_type) {
         $return_message_text = 'ErrorCode:' . $error_code . '管理者エラーコードを教えてくださいにゃ';
         mysqli_close($db_link);
         sending_messages($replyToken, $message_type, $return_message_text);
     }
 
     //処理開始
-    $home_path = dirname(__FILE__);
     date_default_timezone_set('Asia/Tokyo');
     $now_time = date("Y-m-d G:i:s");
     //↓メンテナンス時間を設定
@@ -514,11 +535,14 @@
         $cnt = $get_number_people->{"count"};
         if ($event_type == 'join') { //グループにbotが参加
             insert_group_member($db_link, $group_id, $cnt);
+            //$group_name = get_group_name($group_id);
+            //insert_group_name($db_link, $group_id, $group_name->{"groupName"});
         } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
             update_group_member($db_link, $group_id, $cnt);
         } else { //グループからbot退出
             delete_group_member($db_link, $group_id);
             del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id);
+            //delete_group_name($db_link, $group_id);
         }
     }
 
@@ -581,13 +605,26 @@
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'くわしく') {
-        $path = $home_path . '/json/output_detail_spending.json';
+        $path = ROOT_DIRECTOR . '/json/output_detail_spending.json';
         $json = file_get_contents($path);
         $base_json = '{
             "type": "text",
             "text": "%s",
             "size": "lg"
             },';
+        //毎月ごとの金額を集計
+        $res = get_monthly_price($db_link, $ch_type, $user_id, $group_id);
+        if (!$res) {
+            send_db_error(7, $replyToken, $message_type);
+        }
+
+        while ($row = mysqli_fetch_assoc($res)) {
+            $text = $row['monthly'];
+            $text .= ' => ¥';
+            $text .= $row['sam_price'];
+            $add_json3 .= sprintf($base_json, $text);
+        }
+
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
@@ -616,7 +653,7 @@
             $add_json2 .= sprintf($base_json, $text);
         }
 
-        $json = sprintf($json, $add_json, $add_json2);
+        $json = sprintf($json, $add_json3, $add_json, $add_json2);
         mysqli_close($db_link);
         send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
@@ -632,7 +669,7 @@
             }
             if ($insert_flag) {
                 insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type);
-                $path = $home_path . '/json/classification.json';
+                $path = ROOT_DIRECTOR . '/json/classification.json';
                 $send_json = file_get_contents($path);
                 mysqli_close($db_link);
                 send_fles_message($send_json, $replyToken);
@@ -717,9 +754,16 @@
         }
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
-        $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
-        if (!$res) {
-            send_db_error(6, $replyToken, $message_type);
+        if ($follow_flag) {
+            $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
+            if (!$res) {
+                send_db_error(6, $replyToken, $message_type);
+            }
+        } else { //未フォロー記録不可
+            $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
+            mysqli_close($db_link);
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+
         }
 
         $spending_array = classify_spending();

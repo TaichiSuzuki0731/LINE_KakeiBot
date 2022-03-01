@@ -3,7 +3,6 @@
 
     $unlink_files = '';
 
-    $home_path = dirname(__FILE__);
     // access_logのフォルダ
     $path1 = '/compress_folder/';
     // mysql_dumpのフォルダ
@@ -15,7 +14,7 @@
     $ago2 = date("Y-m-d", strtotime("-14 day"));
 
     // access_logのフォルダ内の対象ファイルの収集
-    $log_list = glob($home_path . $path1 . '{*.zip}', GLOB_BRACE);
+    $log_list = glob(ROOT_DIRECTOR . $path1 . '{*.zip}', GLOB_BRACE);
 
     foreach ($log_list as $file) {
         // ファイルのタイムスタンプを取得
@@ -30,7 +29,7 @@
 
     // dbのバックアップ内のフォルダ・ファイルを収集
     $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($home_path . $path2,
+        new RecursiveDirectoryIterator(ROOT_DIRECTOR . $path2,
                 FilesystemIterator::CURRENT_AS_FILEINFO |
                 FilesystemIterator::KEY_AS_PATHNAME |
                 FilesystemIterator::SKIP_DOTS
@@ -43,7 +42,7 @@
             continue;
         }
         $del_files[$loop_cnt] = $file_info;
-        $del_folders[$loop_cnt] = $home_path . $path2 . mb_strstr(str_replace($home_path . $path2, '', $del_files[$loop_cnt]), '/', true);
+        $del_folders[$loop_cnt] = ROOT_DIRECTOR . $path2 . mb_strstr(str_replace(ROOT_DIRECTOR . $path2, '', $del_files[$loop_cnt]), '/', true);
         $loop_cnt += 1;
     }
 

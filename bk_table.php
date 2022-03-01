@@ -7,10 +7,9 @@
     $db_pass = $db_info['pass'];
     $db_name = $db_info['name'];
 
-    $home_path = dirname(__FILE__);
     $second_path  = '/backup_db/';
     $folderPath = "mysqldump_db_";
-    $filePath = $home_path . $second_path . $folderPath . "date" . date('ymd') . '_' . date('His') . '/';
+    $filePath = ROOT_DIRECTOR . $second_path . $folderPath . "date" . date('ymd') . '_' . date('His') . '/';
 
     //db接続
     $db_link = db_connect();
