@@ -257,6 +257,25 @@
         return $res;
     }
 
+    //kakeiboテーブルから毎月ごとの集計
+    function get_monthly_price($db_link, $ch_type, $user_id, $group_id) {
+        $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m') AS monthly, sum(price) AS sam_price FROM kakeibo where ";
+        if ($ch_type == 'user') {
+            $sql .= sprintf("id = '%s' AND groupId = '' ",
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        } else {
+            $sql .= sprintf("groupId = '%s' ",
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        }
+        $sql .= "GROUP BY DATE_FORMAT(insert_time, '%Y%m')";
+
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
     //ユーザがフォロー外した時にKakeiboテーブルのデータを全削除
     function del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id) {
         $sql = 'DELETE FROM kakeibo WHERE ';
@@ -589,6 +608,19 @@
             "text": "%s",
             "size": "lg"
             },';
+        //毎月ごとの金額を集計
+        $res = get_monthly_price($db_link, $ch_type, $user_id, $group_id);
+        if (!$res) {
+            send_db_error(7, $replyToken, $message_type);
+        }
+
+        while ($row = mysqli_fetch_assoc($res)) {
+            $text = $row['monthly'];
+            $text .= ' => ¥';
+            $text .= $row['sam_price'];
+            $add_json3 .= sprintf($base_json, $text);
+        }
+
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
@@ -617,7 +649,7 @@
             $add_json2 .= sprintf($base_json, $text);
         }
 
-        $json = sprintf($json, $add_json, $add_json2);
+        $json = sprintf($json, $add_json3, $add_json, $add_json2);
         mysqli_close($db_link);
         send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
@@ -718,9 +750,16 @@
         }
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
-        $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
-        if (!$res) {
-            send_db_error(6, $replyToken, $message_type);
+        if ($follow_flag) {
+            $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
+            if (!$res) {
+                send_db_error(6, $replyToken, $message_type);
+            }
+        } else { //未フォロー記録不可
+            $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
+            mysqli_close($db_link);
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+
         }
 
         $spending_array = classify_spending();

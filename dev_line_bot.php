@@ -2,6 +2,7 @@
     include('line_api_info.php'); //LINE_API情報
     include('function.inc.php'); //共通関数群
     include(ROOT_DIRECTOR . '/line_info/line_info.php'); //LINE_APIに接続する際に必要な情報
+    include('dev_line_bot.inc.php');
 
     //curl実行
     function exec_curl ($ch) {
@@ -251,6 +252,25 @@
             );
         }
         $sql .= " and DATE_FORMAT(insert_time, '%Y%m') = DATE_FORMAT(NOW(), '%Y%m') group by classify_id";
+
+        $res = mysqli_query($db_link, $sql);
+
+        return $res;
+    }
+
+    //kakeiboテーブルから毎月ごとの集計
+    function get_monthly_price($db_link, $ch_type, $user_id, $group_id) {
+        $sql = "SELECT DATE_FORMAT(insert_time, '%Y/%m') AS monthly, sum(price) AS sam_price FROM dev_kakeibo where ";
+        if ($ch_type == 'user') {
+            $sql .= sprintf("id = '%s' AND groupId = '' ",
+                mysqli_real_escape_string($db_link, $user_id)
+            );
+        } else {
+            $sql .= sprintf("groupId = '%s' ",
+                mysqli_real_escape_string($db_link, $group_id)
+            );
+        }
+        $sql .= "GROUP BY DATE_FORMAT(insert_time, '%Y%m')";
 
         $res = mysqli_query($db_link, $sql);
 
@@ -515,11 +535,14 @@
         $cnt = $get_number_people->{"count"};
         if ($event_type == 'join') { //グループにbotが参加
             insert_group_member($db_link, $group_id, $cnt);
+            //$group_name = get_group_name($group_id);
+            //insert_group_name($db_link, $group_id, $group_name->{"groupName"});
         } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
             update_group_member($db_link, $group_id, $cnt);
         } else { //グループからbot退出
             delete_group_member($db_link, $group_id);
             del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id);
+            //delete_group_name($db_link, $group_id);
         }
     }
 
@@ -589,6 +612,19 @@
             "text": "%s",
             "size": "lg"
             },';
+        //毎月ごとの金額を集計
+        $res = get_monthly_price($db_link, $ch_type, $user_id, $group_id);
+        if (!$res) {
+            send_db_error(7, $replyToken, $message_type);
+        }
+
+        while ($row = mysqli_fetch_assoc($res)) {
+            $text = $row['monthly'];
+            $text .= ' => ¥';
+            $text .= $row['sam_price'];
+            $add_json3 .= sprintf($base_json, $text);
+        }
+
         //毎日ごとの金額を集計
         $res = get_date_price($db_link, $ch_type, $user_id, $group_id);
         if (!$res) {
@@ -617,7 +653,7 @@
             $add_json2 .= sprintf($base_json, $text);
         }
 
-        $json = sprintf($json, $add_json, $add_json2);
+        $json = sprintf($json, $add_json3, $add_json, $add_json2);
         mysqli_close($db_link);
         send_fles_message($json, $replyToken);
     }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
@@ -718,9 +754,16 @@
         }
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
-        $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
-        if (!$res) {
-            send_db_error(6, $replyToken, $message_type);
+        if ($follow_flag) {
+            $res = update_kakeibo_classify($db_link, $user_id, $group_id, $message_text, $ch_type);
+            if (!$res) {
+                send_db_error(6, $replyToken, $message_type);
+            }
+        } else { //未フォロー記録不可
+            $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
+            mysqli_close($db_link);
+            sending_messages($replyToken, $message_type, $line_name . $return_message_text);
+
         }
 
         $spending_array = classify_spending();

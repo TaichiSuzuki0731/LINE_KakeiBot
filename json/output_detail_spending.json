@@ -14,6 +14,23 @@
           "contents": [
             {
               "type": "text",
+              "text": "毎月の出費",
+              "size": "xl",
+              "contents": [],
+              "margin": "xs"
+            },
+            %s
+            {
+              "type": "separator"
+            }
+          ]
+        },
+        {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
               "text": "毎日の出費",
               "size": "xl",
               "contents": [],
