@@ -2,7 +2,7 @@
     include('line_api_info.php'); //LINE_API情報
     include('function.inc.php'); //共通関数群
     include(ROOT_DIRECTOR . '/line_info/line_info.php'); //LINE_APIに接続する際に必要な情報
-    include('dev_line_bot.inc.php');
+    include('line_bot.inc.php');
 
     //curl実行
     function exec_curl ($ch) {
@@ -13,25 +13,6 @@
         curl_close($ch);
 
         return $res;
-    }
-
-    //curlレスポンスを収集
-    function receipt_curl_response($result, $res_curl, $method) {
-        $strHead = substr($result, 0, $res_curl['header_size']);
-        $_header = str_replace("\r", '', $strHead);
-        $tmp_header = explode("\n", $_header);
-        $ary_header = [];
-        foreach ($tmp_header as $row_data) {
-            $tmp = explode(': ', $row_data);
-            $key = trim($tmp[0]);
-            if ( $key == '' ) {
-                continue;
-            }
-            $val = str_replace($key.': ', '', $row_data);
-            $ary_header[$key] = trim($val);
-        }
-        $log = '[dev]x-line-request-id => ' . $ary_header['x-line-request-id'] . ' | Method => ' . $method . ' | EndPoint => ' . $res_curl['url'] . ' | StatusCode => ' . $res_curl['http_code'] . ' | date => ' . $ary_header['date'];
-        file_put_contents(ROOT_DIRECTOR . '/compress_folder/access.log', $log . "\n", FILE_APPEND);
     }
 
     //Webhook受信時のログ
@@ -293,69 +274,6 @@
         mysqli_query($db_link, $sql);
     }
 
-    //Kakeiboテーブルのデータをユーザによる操作で削除
-    function del_kakeibo_deta($db_link, $ch_type, $hash_id, $user_id, $group_id) {
-        $sql = 'DELETE FROM dev_kakeibo WHERE ';
-        if ($ch_type == 'user') {
-            $sql .= sprintf("message_id = '%s' and id = '%s' and groupId = ''",
-                mysqli_real_escape_string($db_link, $hash_id),
-                mysqli_real_escape_string($db_link, $user_id)
-            );
-        } else {
-            $sql .= sprintf("message_id = '%s' and groupId = '%s'",
-                mysqli_real_escape_string($db_link, $hash_id),
-                mysqli_real_escape_string($db_link, $group_id)
-            );
-        }
-        $sql .= ' limit 1';
-
-        $res = mysqli_query($db_link, $sql);
-
-        return $res;
-    } 
-
-    //Kakeiboテーブルの支出分類コードを修正
-    function update_classify_id($db_link, $ch_type, $hash_id, $user_id, $group_id, $classify) {
-        $sql = 'UPDATE dev_kakeibo SET classify_id = ';
-        if ($ch_type == 'user') {
-            $sql .= sprintf("'%s' where message_id = '%s' and id = '%s' and groupId = ''",
-                mysqli_real_escape_string($db_link, $classify),
-                mysqli_real_escape_string($db_link, $hash_id),
-                mysqli_real_escape_string($db_link, $user_id)
-            );
-        } else {
-            $sql .= sprintf("'%s' where message_id = '%s' and groupId = '%s'",
-                mysqli_real_escape_string($db_link, $classify),
-                mysqli_real_escape_string($db_link, $hash_id),
-                mysqli_real_escape_string($db_link, $group_id)
-            );
-        }
-        $sql .= ' limit 1';
-
-        $res = mysqli_query($db_link, $sql);
-
-        return $res;
-    }
-
-    //修正用データの抽出
-    function get_del_kakeibo($db_link, $ch_type, $user_id, $group_id) {
-        $sql = 'SELECT message_id, price, classify_id FROM dev_kakeibo WHERE ';
-        if ($ch_type == 'user') {
-            $sql .= sprintf("id = '%s' and groupId = ''",
-                mysqli_real_escape_string($db_link, $user_id)
-            );
-        } else {
-            $sql .= sprintf("groupId = '%s'",
-                mysqli_real_escape_string($db_link, $group_id)
-            );
-        }
-        $sql .= " and DATE_FORMAT(insert_time, '%Y%m') = DATE_FORMAT(NOW(), '%Y%m')";
-
-        $res = mysqli_query($db_link, $sql);
-
-        return $res;
-    }
-
     //kakeiboテーブルにデータをインサート
     function insert_kakeibo($db_link, $message_id, $user_id, $group_id, $message_text, $ch_type) {
         $sql = sprintf("INSERT INTO dev_kakeibo (message_id, id, groupId, price, ch_type) VALUES ('%s', '%s', '%s', '%s', '%s')",
@@ -444,26 +362,48 @@
         return $row['linename'];
     }
 
-    //分類機能
-    function classify_spending() {
-        $spending = [
-            0 => '未設定',
-            1 => '食料費',
-            2 => '生活費',
-            3 => '衣服費',
-            4 => '美健費',
-            5 => '交際費',
-            6 => '交通費',
-            7 => '娯楽費',
-            8 => '医療費',
-            9 => '通信費',
-            10 => '光熱費',
-            11 => '住居費',
-            12 => '慶弔費',
-            13 => 'その他'
-        ];
+    //Lineグループ名を取得
+    function get_group_name($group_id) {
+        $url = 'https://api.line.me/v2/bot/group/' . $group_id . '/summary';
 
-        return $spending;
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . DEV_LINE_CHANNEL_ACCESS_TOKEN));
+
+        $res = exec_curl($ch);
+
+        //MessageAPIのレスポンスを記録
+        @receipt_curl_response($res['result'], $res['getinfo'], 'GET');
+
+        //レスポンスからbodyを取り出す
+        $response = substr($res['result'], $res['getinfo']['header_size']);
+
+        $userdata = json_decode($response);
+        return $userdata;
+    }
+
+    //botがグループに参加した際にグループ名を登録
+    function insert_group_name($db_link, $group_id, $group_name) {
+        $sql = sprintf("INSERT INTO dev_group_name (groupId, group_name) VALUES ('%s', '%s')",
+            mysqli_real_escape_string($db_link, $group_id),
+            mysqli_real_escape_string($db_link, $group_name)
+        );
+
+        //登録実行
+        mysqli_query($db_link, $sql);
+    }
+
+    //botがグループから退出時した際にデータを削除
+    function delete_group_name($db_link, $group_id) {
+        $sql = sprintf("DELETE FROM dev_group_name WHERE groupId = '%s' limit 1",
+            mysqli_real_escape_string($db_link, $group_id)
+        );
+
+        //登録実行
+        mysqli_query($db_link, $sql);
     }
 
     //データベースエラー時のメッセージ送信
@@ -535,14 +475,14 @@
         $cnt = $get_number_people->{"count"};
         if ($event_type == 'join') { //グループにbotが参加
             insert_group_member($db_link, $group_id, $cnt);
-            //$group_name = get_group_name($group_id);
-            //insert_group_name($db_link, $group_id, $group_name->{"groupName"});
+            $group_name = get_group_name($group_id);
+            insert_group_name($db_link, $group_id, $group_name->{"groupName"});
         } elseif ($event_type == 'memberJoined' || $event_type == 'memberLeft') { //グループでメンバーが参加 or 退出
             update_group_member($db_link, $group_id, $cnt);
         } else { //グループからbot退出
             delete_group_member($db_link, $group_id);
             del_kakeibo_all_deta($db_link, $ch_type, $user_id, $group_id);
-            //delete_group_name($db_link, $group_id);
+            delete_group_name($db_link, $group_id);
         }
     }
 
@@ -559,12 +499,6 @@
     $message_text = mb_convert_kana($message_text, 'n');
     //[ー]=>[-]に変換
     $message_text = str_replace('ー', '-', $message_text);
-    //[＠]=>[@]に変換
-    $message_text = str_replace('＠', '@', $message_text);
-    //[＃]=>[#]に変換
-    $message_text = str_replace('＃', '#', $message_text);
-    //[％]=>[%]に変換
-    $message_text = str_replace('％', '%', $message_text);
     //先頭語尾空白があった際に削除
     $message_text = trim($message_text);
 
@@ -680,78 +614,8 @@
             $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
         }
     } elseif ($message_text == '修正') {
-        $res = get_del_kakeibo($db_link, $ch_type, $user_id, $group_id);
-        if (!$res) {
-            send_db_error(3, $replyToken, $message_type);
-        }
-
-        $return_message_text = "消したい家計簿データの【】内の文字列を@の後につけて送信してくださいニャ〜\n\n";
-        $return_message_text .=  "支出分類を修正したい場合は「#xxxxxx%yy」のよう【】内の文字列をxxxxxxに『』内の支出分類コードをyyに入れて送信してくださいにゃんこ\n";
-        $spending_array = classify_spending();
-        foreach ($spending_array as $key => $row) {
-            if ($key >= 1) {
-                $return_message_text .= '『' . $key . '』' . $row . "\n";
-            }
-        }
-        $return_message_text .= "\n";
-        while ($row = mysqli_fetch_assoc($res)) {
-            $num = $row['classify_id'];
-            $return_message_text .= $spending_array[$num] . ' 【' . $row['message_id'] . '】 ¥' . $row['price'] . "\n";
-        }
-        $return_message_text = substr($return_message_text, 0, -1);
-    } elseif (strpos($message_text, '@') !== false) {
-        //@の位置が[0]のみ
-        $mb_str = mb_strpos($message_text, '@');
-        if ($mb_str === 0) {
-            $del_flag = true;
-        }
-        //@が1個以下のみTRUE
-        if (substr_count($message_text, '@') > 1) {
-            $del_flag = false;
-        }
-        if ($del_flag) {
-            $message_text = (str_replace('@', '', $message_text));
-            $res = del_kakeibo_deta($db_link, $ch_type, $message_text, $user_id, $group_id);
-            if (!$res) {
-                send_db_error(4, $replyToken, $message_type);
-            }
-
-            $return_message_text = $message_text . "を削除したニャ";
-        } else {
-            $return_message_text = "「@」の位置は先頭のみニャ\nまた、@は2回以上は使えませんにゃ〜〜";
-        }
-    } elseif (strpos($message_text, '#') !== false && strpos($message_text, '%') !== false) {
-        $message_text = str_replace(' ', '', $message_text);
-        //#が1個のみTRUE
-        if (substr_count($message_text, '#') == 1) {
-            //#の位置が[0]のみ
-            if (mb_strpos($message_text, '#') === 0) {
-                $upd_flag = true;
-                $classify = mb_strstr($message_text, '%');
-                //スペースが一個のみ OK
-                if (substr_count($classify, '%') == 1) {
-                    $message_text = str_replace($classify, '', $message_text);
-                    $classify = str_replace('%', '', $classify);
-                } else {
-                    $upd_flag = false;
-                    $return_message_text = "「#」の位置は先頭のみニャ\nまた、#や%は2回以上は使えませんにゃ〜〜";
-                }
-            }
-        }
-        $spending_cnt = count(classify_spending()) - 1;
-        if ($classify > $spending_cnt || $classify == 0) {
-            $upd_flag = false;
-            $return_message_text = '支出分類コードが異なりますニャ';
-        }
-        if ($upd_flag) {
-            $message_text = str_replace('#', '', $message_text);
-            $res = update_classify_id($db_link, $ch_type, $message_text, $user_id, $group_id, $classify);
-            if (!$res) {
-                send_db_error(5, $replyToken, $message_type);
-            }
-
-            $return_message_text = $message_text . "を修正したニャ";
-        }
+        $return_message_text = "↓URLから修正ページに移動して修正してくださいニャ〜\n\n";
+        $return_message_text .=  "https://st0731-dev-srv.moo.jp/dev_index.php";
     } elseif (strpos($message_text, '!') !== false) {
         $message_text = str_replace('!', '', $message_text);
         if ($follow_flag) {
