@@ -70,6 +70,8 @@
 <html>
 <head>
     <title>kakeiBot_web</title>
+    <meta charset="utf-8"/>
+    <meta http-equiv="content-language" content="ja">
     <style type="text/css">
         body {
             zoom: 400%
@@ -85,12 +87,10 @@
             <select name='input_classify' id='pet-select'>
 <?php
     foreach ($classify_array as $key => $row) {
-        if ($key > 0) {
-            if ($key == $kakeibo_deta->{'classify_id'}) {
-                echo '<option value=' . h($key) .' selected>' . h($row) .'</option>';
-            } else {
-                echo '<option value=' . h($key) .' >' . h($row) .'</option>';
-            }
+        if ($key == $kakeibo_deta->{'classify_id'}) {
+            echo '<option value=' . h($key) .' selected>' . h($row) .'</option>';
+        } else {
+            echo '<option value=' . h($key) .' >' . h($row) .'</option>';
         }
     }
 ?>

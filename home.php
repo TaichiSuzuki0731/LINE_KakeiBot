@@ -114,24 +114,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>kakeiBot_web</title>
-<?php 
-    echo '<h1>' . trim($user_name) . 'さん専用KakeiBotページ</h1>';
-    //echo '<h3>過去3ヶ月のデータを編集できます</h3><br>';
-    if ($delete_result == 'success') {
-        echo '<h3>削除に成功しました</h3><br>';
-    }
-    if ($delete_result == 'error') {
-        echo '<h3>削除に失敗しました。管理者にお問い合わせしてください</h3><br>';
-    }
-    if ($_GET['modify_result'] == 'true') {
-        echo '<h3>修正に成功しました</h3><br>';
-    }
-    if ($_GET['modify_result'] == 'false') {
-        echo '<h3>修正に失敗しました。管理者にお問い合わせしてください</h3><br>';
-    }
-
-?>
+    <title>kakeiBot_web</title>
+    <meta charset="utf-8"/>
+    <meta http-equiv="content-language" content="ja">
     <style type="text/css">
         table {
             table-layout: fixed;
@@ -154,6 +139,21 @@
     </style>
 </head>
 <body>
+<?php 
+    echo '<h1>' . trim($user_name) . 'さん専用KakeiBotページ</h1>';
+    if ($delete_result == 'success') {
+        echo '<h3>削除に成功しました</h3><br>';
+    }
+    if ($delete_result == 'error') {
+        echo '<h3>削除に失敗しました。管理者にお問い合わせしてください</h3><br>';
+    }
+    if ($_GET['modify_result'] == 'true') {
+        echo '<h3>修正に成功しました</h3><br>';
+    }
+    if ($_GET['modify_result'] == 'false') {
+        echo '<h3>修正に失敗しました。管理者にお問い合わせしてください</h3><br>';
+    }
+?>
     <table border="1">
     <tr>
         <th>ch</th>
