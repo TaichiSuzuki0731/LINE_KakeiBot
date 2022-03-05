@@ -16,13 +16,18 @@
     // access_logのフォルダ内の対象ファイルの収集
     $log_list = glob(ROOT_DIRECTOR . $path1 . '{*.zip}', GLOB_BRACE);
 
+    $del_cnt_errors = 0;
+
     foreach ($log_list as $file) {
         // ファイルのタイムスタンプを取得
         $unixdate = filemtime($file);
         // タイムスタンプを日付のフォーマットに変更
         $filedate = date("Y-m-d", $unixdate);
         if($filedate < $ago1){
-            unlink($file); //削除実行
+            $del_res = unlink($file); //削除実行
+            if (!$del_res) {
+                $del_cnt_errors += 1;
+            }
             $unlink_files .= $file . "\n";
         }
     }
@@ -55,19 +60,26 @@
             $unixdate = filemtime($row);
             $filedate = date("Y-m-d", $unixdate);
             if($filedate < $ago2) {
-                unlink($row);
+                $del_res = unlink($file); //削除実行
+                if (!$del_res) {
+                    $del_cnt_errors += 1;
+                }
                 $unlink_files .= $row . "\n";
             }
         }
     }
 
+    $del_date_time = date("ymd_His", strtotime("-14 day"));
+
     // mysql_dumpフィルダ削除
     foreach ($del_folders as $row) {
         if (is_dir($row)) {
-            $unixdate = filemtime($row);
-            $filedate = date("Y-m-d", $unixdate);
-            if($filedate < $ago2) {
-                rmdir($row);
+            $del_dir_rename = str_replace('mysqldump_db_date', '', basename($row));
+            if($del_dir_rename < $del_date_time) {
+                $del_res = rmdir($row);
+                if (!$del_res) {
+                    $del_cnt_errors += 1;
+                }
                 $unlink_files .= $row . "\n";
             }
         }
@@ -75,7 +87,7 @@
 
 
     if ($unlink_files != '') {
-        $message = "↓unlink_file\n" . $unlink_files;
+        $message = "↓unlink_file\n" . $unlink_files . "\nError_Cnt: " . $del_cnt_errors;
     } else {
         $message = "No_unlink_file";
     }

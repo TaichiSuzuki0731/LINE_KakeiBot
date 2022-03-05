@@ -339,16 +339,14 @@
 
     //グループ or トークルームの場合は人数を取得
     function count_groupa_member($db_link, $ch_type, $group_id) {
-        $cnt_member = 0;
         $sql = sprintf("SELECT count FROM dev_group_count_member WHERE groupId = '%s'",
             mysqli_real_escape_string($db_link, $group_id)
         );
 
         $res = mysqli_query($db_link, $sql);
         $row = mysqli_fetch_assoc($res);
-        $cnt_member = $row['count'];
 
-        return $cnt_member;
+        return $row['count'];
     }
 
     //ユーザネーム取得
@@ -522,6 +520,7 @@
     }
 
     //グループ or トークルームの場合は人数を取得
+    $cnt_member = 0;
     if ($ch_type == 'group' || $ch_type == 'room') {
         $cnt_member = count_groupa_member($db_link, $ch_type, $group_id);
     }
@@ -531,14 +530,14 @@
     $upd_flag = false;
 
     //返信メッセージ
-    if ($message_text == 'いくら') {
+    if ($message_text == 'いくら' || $message_text == '幾ら') {
         //支出合計を計算
         $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
         $return_message_text = '今月の支出は' . $sum_price . '円ニャ';
-        if ($cnt_member > 0) {
+        if ($cnt_member > 1) {
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
-    } elseif ($message_text == 'くわしく') {
+    } elseif ($message_text == 'くわしく' || $message_text == '詳しく') {
         $path = ROOT_DIRECTOR . '/json/output_detail_spending.json';
         $json = file_get_contents($path);
         $base_json = '{
@@ -590,7 +589,7 @@
         $json = sprintf($json, $add_json3, $add_json, $add_json2);
         mysqli_close($db_link);
         send_fles_message($json, $replyToken);
-    }elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
+    } elseif (preg_match("/^[-0-9]+$/", $message_text)) { //-,1~9のみをTRUE
         if ($follow_flag) { //フォロー済み記録可
             //-の位置が[0]かfalseとなる場合のみTRUE
             $mb_str = mb_strpos($message_text, '-');
@@ -613,7 +612,7 @@
         } else { //未フォロー記録不可
             $return_message_text = "友達登録がされていませんにゃ〜〜\nKakeiBotとととととと友達になってくださいニャ、、、。";
         }
-    } elseif ($message_text == '修正') {
+    } elseif ($message_text == 'しゅうせい' || $message_text == '修正') {
         $return_message_text = "↓URLから修正ページに移動して修正してくださいニャ〜\n\n";
         $return_message_text .=  "https://st0731-dev-srv.moo.jp/dev_index.php";
     } elseif (strpos($message_text, '!') !== false) {
@@ -634,7 +633,7 @@
         $return_message_text = $spending_array[$message_text] . "に分類したにゃ\n\n";
         $sum_price = sum_kakeibo_price($db_link, $ch_type, $group_id, $user_id);
         $return_message_text .= '今月の支出は' . $sum_price . '円ニャ';
-        if ($cnt_member > 0) {
+        if ($cnt_member > 1) {
             $return_message_text .= "\n一人あたり" . number_format($sum_price / $cnt_member, 2) . '円ニャ';
         }
     } elseif ($message_text == 'お-い') {
