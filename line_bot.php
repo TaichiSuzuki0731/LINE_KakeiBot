@@ -52,7 +52,7 @@
 
         $res = exec_curl($ch);
 
-        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
@@ -80,7 +80,7 @@
         ));
         $res = exec_curl($ch);
 
-        receipt_curl_response($res['result'], $res['getinfo'], 'POST');
+        @receipt_curl_response($res['result'], $res['getinfo'], 'POST');
         exit();
     }
 
