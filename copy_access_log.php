@@ -7,6 +7,9 @@
     $compress_file = ROOT_DIRECTOR . $second_path . 'access.log';
     $file = ROOT_DIRECTOR . $second_path . 'compress_access_log_' . date(Ymd) . '.zip';
 
+    $is_add_file = true;
+    $is_close = true;
+
     // 圧縮・解凍するためのオブジェクト生成
     $zip = new ZipArchive();
 
@@ -14,15 +17,25 @@
     if ($result === true) {
         // 圧縮
         $zip->addFile($compress_file);
+        if (!$zip) {
+            $message .= 'ErrorType_addFile';
+            $is_add_file = false;
+        }
+
         // ファイルを生成
         $zip->close();
+        if (!$zip) {
+            $message .= 'ErrorType_close';
+            $is_close = false;
+        }
 
-        //ファイルの中身を削除
-        file_put_contents($compress_file,'');
-
-        $message .= 'NO_Error';
+        if ($is_add_file && $is_close) {
+            //ファイルの中身を削除
+            file_put_contents($compress_file,'');
+            $message .= 'NO_Error';
+        }
     } else {
-        $message .= $result;
+        $message .= 'ErrorType_ZipArchive';
     }
 
     post_messages($message);

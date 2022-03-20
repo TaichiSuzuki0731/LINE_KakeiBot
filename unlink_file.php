@@ -2,6 +2,7 @@
     include('send_admin_line.php'); //管理者にLineメッセージを送る
 
     $unlink_files = '';
+    $del_errors_files = '';
 
     // access_logのフォルダ
     $path1 = '/compress_folder/';
@@ -12,18 +13,21 @@
     $ago1 = date("Y-m-d", strtotime("-30 day"));
     // dbのバックアップは2世代まで保存
     $ago2 = date("Y-m-d", strtotime("-14 day"));
+    // dbのフォルダ
+    $ago3 = date("ymd", strtotime("-14 day"));
 
     // access_logのフォルダ内の対象ファイルの収集
     $log_list = glob(ROOT_DIRECTOR . $path1 . '{*.zip}', GLOB_BRACE);
 
     foreach ($log_list as $file) {
-        // ファイルのタイムスタンプを取得
-        $unixdate = filemtime($file);
         // タイムスタンプを日付のフォーマットに変更
-        $filedate = date("Y-m-d", $unixdate);
-        if($filedate < $ago1){
-            unlink($file); //削除実行
-            $unlink_files .= $file . "\n";
+        $filedate = date("Y-m-d", filemtime($file));
+        if ($filedate < $ago1) {
+            if (unlink($file)) {
+                $unlink_files .= basename($file) . "\n";
+            } else {
+                $del_errors_files .= basename($file) . "\n";
+            }
         }
     }
 
@@ -51,31 +55,37 @@
 
     // mysql_dumpファイル削除
     foreach ($del_files as $row) {
-        if (is_file($row)) {
-            $unixdate = filemtime($row);
-            $filedate = date("Y-m-d", $unixdate);
+        if (is_file($row) && strpos($row, '.ht') === false) {
+            $filedate = date("Y-m-d", filemtime($row));
             if($filedate < $ago2) {
-                unlink($row);
-                $unlink_files .= $row . "\n";
+                if (unlink($row)) {
+                    $unlink_files .= basename($row) . "\n";
+                } else {
+                    $del_errors_files .= basename($row) . "\n";
+                }
             }
         }
     }
 
+    $del_folder_name = 'mysqldump_db_date';
+
     // mysql_dumpフィルダ削除
     foreach ($del_folders as $row) {
-        if (is_dir($row)) {
-            $unixdate = filemtime($row);
-            $filedate = date("Y-m-d", $unixdate);
-            if($filedate < $ago2) {
-                rmdir($row);
-                $unlink_files .= $row . "\n";
+        if (is_dir($row) && strpos($row, $del_folder_name) !== false) {
+            $del_dir_rename = strstr(str_replace($del_folder_name, '', basename($row)), '_0100', true);
+            if($del_dir_rename < $ago3) {
+                if (rmdir($row)) {
+                    $unlink_files .= basename($row) . "\n";
+                } else {
+                    $del_errors_files .= basename($row) . "\n";
+                }
             }
         }
     }
 
 
     if ($unlink_files != '') {
-        $message = "↓unlink_file\n" . $unlink_files;
+        $message = "Unlink_files\n" . $unlink_files . "\nDelete_Error_Files\n" . $del_errors_files;
     } else {
         $message = "No_unlink_file";
     }

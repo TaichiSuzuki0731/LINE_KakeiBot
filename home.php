@@ -72,8 +72,8 @@
     $sql = sprintf("SELECT * FROM kakeibo WHERE id = '%s' ",
         mysqli_real_escape_string($db_link, $user_id)
     );
-    //$sql .= "and DATE_FORMAT(insert_time, '%Y%m') > DATE_FORMAT((NOW() - INTERVAL 3 MONTH), '%Y%m') ORDER BY insert_time DESC";
-    $sql .= "ORDER BY insert_time DESC";
+    $sql .= "and DATE_FORMAT(insert_time, '%Y%m') > DATE_FORMAT((NOW() - INTERVAL 3 MONTH), '%Y%m') ORDER BY insert_time DESC";
+    //$sql .= "ORDER BY insert_time DESC";
 
     $res = mysqli_query($db_link, $sql);
 
@@ -141,6 +141,7 @@
 <body>
 <?php 
     echo '<h1>' . trim($user_name) . 'さん専用KakeiBotページ</h1>';
+    echo '<h3>過去3ヶ月間のデータを編集可能です</h3>';
     if ($delete_result == 'success') {
         echo '<h3>削除に成功しました</h3><br>';
     }

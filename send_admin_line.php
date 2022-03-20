@@ -2,6 +2,7 @@
     include('line_api_info.php'); //LINE_API情報
     include('function.inc.php'); //共通関数群
     include(ROOT_DIRECTOR . '/line_info/line_info.php'); //LINE_APIに接続する際に必要な情報
+    include('line_bot.inc.php');
 
     //特定のユーザにメッセージを送る
     function post_messages($message) {
@@ -28,8 +29,14 @@
         curl_setopt($curl, CURLOPT_POST, true);
         curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_HEADER, true);
         curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
         curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($post_data));
+
         $result = curl_exec($curl);
+        $getinfo = curl_getinfo($curl);
+
         curl_close($curl);
+
+        @receipt_curl_response($result, $getinfo, 'POST');
     }
