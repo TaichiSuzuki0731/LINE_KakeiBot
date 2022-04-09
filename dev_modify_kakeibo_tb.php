@@ -107,7 +107,7 @@
 </body>
     <script>
         function backbrowser() {
-            var url = 'https://st0731-dev-srv.moo.jp/dev_home.php';
+            var url = 'dev_home.php';
             window.location.href = url;
         }
     </script>
