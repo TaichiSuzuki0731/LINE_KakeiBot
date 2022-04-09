@@ -197,7 +197,7 @@
 </body>
     <script>
         function ModifyClick(event) {
-            var url = 'https://st0731-dev-srv.moo.jp/modify_kakeibo_tb.php?modify=' + event;
+            var url = 'modify_kakeibo_tb.php?modify=' + event;
             window.location.href = url;
         }
     </script>
@@ -206,7 +206,7 @@
             var res = confirm("本当に削除しますか？復元は不可能です!");
             if( res == true ) {
                 // OKなら移動
-                var url = 'https://st0731-dev-srv.moo.jp/home.php?delete=' + event;
+                var url = 'home.php?delete=' + event;
                 window.location.href = url;
             } else {
                 // キャンセルならアラートボックスを表示
